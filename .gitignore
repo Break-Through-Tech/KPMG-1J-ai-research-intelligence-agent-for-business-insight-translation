@@ -1,1 +1,7 @@
 PLAN.md
+.vscode/
+__pycache__/
+*.pyc
+data/raw_pdfs/
+data/extracted_text/
+data/papers.parquet

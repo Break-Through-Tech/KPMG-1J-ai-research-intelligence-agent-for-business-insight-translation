@@ -3,7 +3,6 @@ from datetime import date
 
 # file for fetching metadata from the PDFs in Arxiv
 
-#function for 
 def fetch_metadata(category = "cat:cs.AI", max_results = 50, since: date | None = None) -> list[dict]:
     """runs the arxiv.Client search loop, returns metadata dicts with 
     arxiv_id, title, abstract, authors, primary_category, categories, published,
@@ -30,7 +29,7 @@ def fetch_metadata(category = "cat:cs.AI", max_results = 50, since: date | None 
             "published": result.published,
             "updated": result.updated,
             "pdf_url": result.pdf_url,
-            "abs_url": result.abs_url,
+            "abs_url": result.entry_id,
         })
 
     return papers
