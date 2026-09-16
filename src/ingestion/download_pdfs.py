@@ -4,13 +4,14 @@ import requests
 import time
 
 def download_pdf(short_id, pdf_url, dest_path, timeout=60):
-    if os.path.exists(dest_path):
+    #if the path already exists don't download
+    if os.path.exists(dest_path): 
         return "skipped_exists"
 
     try:
         #send GET request to the URL 
         response = requests.get(pdf_url, stream=True, timeout=timeout)
-        response.raise_for_status()
+        response.raise_for_status() #throw error if there is one
 
         directory = os.path.dirname(dest_path)
         if directory and not os.path.exists(directory):
@@ -32,6 +33,7 @@ def download_pdf(short_id, pdf_url, dest_path, timeout=60):
 def download_all(papers, raw_pdf_dir):
     for paper in papers:
         dest_path = os.path.join(raw_pdf_dir, f"{paper['arxiv_id']}.pdf")
+        paper["pdf_path"] = dest_path
         paper["download_status"] = download_pdf(paper["arxiv_id"], paper["pdf_url"], dest_path)
         if paper["download_status"] == "downloaded":
             time.sleep(3)
