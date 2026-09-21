@@ -7,6 +7,9 @@ def clean_text(raw_text: str) -> str:
     return re.sub(r"<!-- Start of picture text -->.*?<!-- End of picture text -->", "[Picture Omitted]", raw_text, flags=re.DOTALL)
 
 def clean_all(papers):
+
     for paper in papers:
+        if paper["extracted_text"] == None:
+            continue
         paper["extracted_text"] = clean_text(paper["extracted_text"])
     return papers

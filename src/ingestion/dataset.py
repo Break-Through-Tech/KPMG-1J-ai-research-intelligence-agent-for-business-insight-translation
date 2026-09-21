@@ -20,7 +20,7 @@ def load_existing(dataset_path):
 def get_ingested_ids(existing_df):
     if existing_df.empty:
         return set()
-    complete = existing_df[existing_df["ingestion_status"] == complete]
+    complete = existing_df[existing_df["ingestion_status"] == "complete"]
     return set(complete["arxiv_id"])
 
 
@@ -33,6 +33,7 @@ def merge_and_save(existing_df, new_rows, dataset_path):
     combined.to_parquet(dataset_path, index=False)
     return combined
 
+#runs through df and marks each of the papers with their final ingestion status
 def compute_ingestion_status(row):
     if row["download_status"] in ("downloaded", "skipped_exists"):
         if row["extraction_status"] == "extracted":
