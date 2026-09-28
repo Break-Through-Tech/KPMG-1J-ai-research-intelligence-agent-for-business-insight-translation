@@ -1,1 +1,7 @@
-
+pandas
+pyarrow
+arxiv
+requests
+pymupdf4llm
+matplotlib
+pytest

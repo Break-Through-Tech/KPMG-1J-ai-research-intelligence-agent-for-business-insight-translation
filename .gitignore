@@ -5,3 +5,7 @@ __pycache__/
 data/raw_pdfs/
 data/extracted_text/
 data/papers.parquet
+data/papers_clean.parquet
+data/preprocess_report.json
+data/paper_stats.parquet
+.pytest_cache/

@@ -28,7 +28,7 @@ This folder contains the ingestion pipeline. It fetches recent papers from arXiv
 run it from the project root as a module, so the relative imports work so for example:
 
 ```bash
-python -m src.ingestion.cli --max-results 10
+.venv/bin/python -m src.ingestion.cli --max-results 10
 ```
 
 | argument | default | description |

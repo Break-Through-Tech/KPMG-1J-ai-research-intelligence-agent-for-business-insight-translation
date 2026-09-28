@@ -11,12 +11,18 @@ def main():
     parser = argparse.ArgumentParser(description = "ingest arXiv papers")
     parser.add_argument("--category", default="cat:cs.AI")
     parser.add_argument("--max-results", type=int, default=50)
-    parser.add_argument("--since", type=int, default=50)
+    parser.add_argument("--since", type=date.fromisoformat, default=None)
     parser.add_argument("--raw-pdf-dir", default="data/raw_pdfs")
     parser.add_argument("--dataset-path", default="data/papers.parquet")
     args = parser.parse_args()
 
-    run_pipeline(args.category, args.max_results, args.since, args.raw_pdf_dir, args.dataset_path)
+    run_pipeline(
+        category=args.category,
+        max_results=args.max_results,
+        raw_pdf_dir=args.raw_pdf_dir,
+        dataset_path=args.dataset_path,
+        since=args.since,
+    )
 
 if __name__ == "__main__":
     main()
