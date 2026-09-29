@@ -1,1 +1,8 @@
-
+arxiv
+requests
+pymupdf4llm
+pandas
+pyarrow
+numpy
+matplotlib
+jupyter
