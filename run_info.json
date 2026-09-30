@@ -1,0 +1,12 @@
+{
+  "commit": "5435927f9c3673bca32a0f464ef62bd7e7e3bd3e",
+  "branch": "main",
+  "run_date_utc": "2026-09-30 05:06",
+  "dataset_path": "data/papers.parquet",
+  "dataset_sha256": "842e8108e45277dcf15385f811f0c6fab54fccc6a5ea9a55ba665d8b310ac229",
+  "dataset_mb": 0.94,
+  "rows": 20,
+  "published_min": "2026-09-29 17:08:01+00:00",
+  "published_max": "2026-09-29 17:59:55+00:00",
+  "unexpected_columns": []
+}
