@@ -12,6 +12,8 @@ Grace's ingestion pipeline already gets us from arXiv to metadata, PDFs, and the
 - `src/preprocessing/quality.py`: flags papers that came out broken or nearly empty
 - `src/preprocessing/pipeline.py` and `cli.py`: run everything with one command
 - `tests/test_preprocessing.py`: unit tests for each step
+- `scripts/pull_recent_papers.sh`: pulls new papers since our newest one and reruns preprocessing
+- `.github/workflows/update-corpus.yml`: runs that script Mon/Wed/Fri at midnight and publishes the data as a GitHub release, so anyone can load it without setting anything up
 
 **edited files**
 - `notebooks/eda_corpus.ipynb`: added a before/after preprocessing section and filled in the findings table
@@ -52,6 +54,43 @@ from the project root:
 | `--report` | `data/preprocess_report.json` | corpus level summary (counts, quality issues, unusable papers) |
 
 `notebooks/eda_corpus.ipynb` §10 loads both outputs and plots what preprocessing changed.
+
+## getting the data
+
+You don't need to run anything or make any accounts. The latest cleaned dataset is published as a GitHub release, and you can load it straight into pandas:
+
+```python
+import pandas as pd
+
+URL = "https://github.com/Break-Through-Tech/KPMG-1J-ai-research-intelligence-agent-for-business-insight-translation/releases/latest/download/papers_clean.parquet"
+df = pd.read_parquet(URL)
+df = df[df["is_usable"]]   # only papers that passed the quality checks
+```
+
+Every update is its own release (named like `data-2026-10-05-0400`) on the repo's **Releases** page. For evaluation, pin one specific release instead of `latest` so scores stay comparable between weeks, by swapping `latest/download` for `download/<release name>` in the URL.
+
+## keeping the corpus up to date
+
+This happens automatically. The GitHub workflow in `.github/workflows/update-corpus.yml` runs every **Monday, Wednesday and Friday at 12:00 AM Eastern**. Each run:
+1. downloads the latest published dataset
+2. runs `./scripts/pull_recent_papers.sh`, which pulls everything published since the newest paper we have (with a 2-day overlap to catch late announcements; duplicates are skipped) and reruns preprocessing
+3. publishes a new release if any papers were added
+
+To run an update right away, go to the repo's **Actions** tab → **Update arXiv corpus** → **Run workflow**. Anyone with write access to the repo can do this. PDFs aren't stored anywhere, since the text is already saved and every paper links back to arXiv.
+
+GitHub schedules use UTC, so when daylight saving time ends (Nov 1) the cron line in the workflow needs to change from `"0 4 * * 1,3,5"` to `"0 5 * * 1,3,5"` to stay at midnight Eastern.
+
+**Running it locally** (for testing or development):
+
+```bash
+./scripts/pull_recent_papers.sh                # updates your local data/ folder
+./scripts/pull_recent_papers.sh --delete-pdfs  # also deletes PDFs once their text is saved
+./scripts/pull_recent_papers.sh --snapshot     # also saves a dated copy to data/snapshots/
+```
+
+If it prints a `WARNING` about `MAX_RESULTS`, rerun with a bigger cap, e.g. `MAX_RESULTS=5000 ./scripts/pull_recent_papers.sh`. Local runs don't publish anything; only the workflow does, so there's always one shared copy.
+
+Note for the embedding step: after an update, only embed papers whose `base_id` isn't already in the index, instead of rebuilding everything.
 
 ## why preprocessing is needed
 

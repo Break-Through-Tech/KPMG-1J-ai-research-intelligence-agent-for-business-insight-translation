@@ -9,3 +9,5 @@ data/papers_clean.parquet
 data/preprocess_report.json
 data/paper_stats.parquet
 .pytest_cache/
+data/snapshots/
+logs/

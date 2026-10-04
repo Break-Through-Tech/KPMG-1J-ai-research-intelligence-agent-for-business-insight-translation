@@ -1,0 +1,83 @@
+# pulls new arXiv cs.AI papers, preprocesses them, and publishes the dataset as a GitHub release
+# teammates read the newest data straight from the "latest" release, no accounts or setup needed:
+#   pd.read_parquet("https://github.com/<org>/<repo>/releases/latest/download/papers_clean.parquet")
+# only this workflow publishes data, so there is always exactly one up to date copy
+
+name: Update arXiv corpus
+
+on:
+  schedule:
+    # 12:00 AM Eastern on Mon/Wed/Fri. GitHub cron is in UTC:
+    # "0 4" while daylight saving time is on (until Nov 1 2026), change to "0 5" after DST ends
+    - cron: "0 4 * * 1,3,5"
+  workflow_dispatch:   # adds a "Run workflow" button on the Actions tab
+
+permissions:
+  contents: write      # needed to create releases, uses GitHub's built-in token so no secrets are required
+
+concurrency:
+  group: update-corpus # never run two updates at once
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300   # the first catch-up run can be long, normal runs take ~20 min
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHON: python
+      PYTHONUNBUFFERED: "1"
+      MAX_RESULTS: "5000"
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -q
+
+      - name: Download the latest published dataset
+        run: |
+          mkdir -p data
+          # the first run has no release yet, the update script then starts from the last few days
+          gh release download --repo "${{ github.repository }}" --dir data \
+            --pattern papers.parquet --pattern papers_clean.parquet --pattern preprocess_report.json \
+            || echo "no published dataset yet, starting fresh"
+
+      - name: Pull new papers and preprocess
+        id: update
+        run: ./scripts/pull_recent_papers.sh --delete-pdfs
+
+      - name: Publish a new data release
+        if: steps.update.outputs.added != '0'
+        run: |
+          TAG="data-$(date -u +%Y-%m-%d-%H%M)"
+          python - <<'EOF' > notes.md
+          import json
+          r = json.load(open("data/preprocess_report.json"))
+          print(f"Added **${{ steps.update.outputs.added }}** new papers, **{r['papers_out']}** total "
+                f"({r['usable_papers']} usable), published {r['date_range'][0]} to {r['date_range'][1]}.")
+          print()
+          print("- `papers_clean.parquet`: cleaned text, sections and quality flags (use this one)")
+          print("- `papers.parquet`: raw ingestion output, used by the next update run")
+          print("- `preprocess_report.json`: corpus summary")
+          EOF
+          gh release create "$TAG" \
+            data/papers_clean.parquet data/papers.parquet data/preprocess_report.json \
+            --repo "${{ github.repository }}" \
+            --title "Corpus $(date -u +%Y-%m-%d)" \
+            --notes-file notes.md \
+            --latest
+
+      - name: Nothing new
+        if: steps.update.outputs.added == '0'
+        run: echo "no new papers since the last release, nothing published"
