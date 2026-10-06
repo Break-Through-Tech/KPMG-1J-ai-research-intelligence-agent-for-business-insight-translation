@@ -30,7 +30,10 @@ def merge_and_save(existing_df, new_rows, dataset_path):
     new_df["ingestion_status"] = new_df.apply(compute_ingestion_status, axis=1)
     combined = pd.concat([existing_df, new_df], ignore_index=True)
     combined = combined.drop_duplicates(subset="arxiv_id", keep="last")
-    combined.to_parquet(dataset_path, index=False)
+    # write to a temp file and swap it in, so a crash mid-write never corrupts the saved dataset
+    tmp_path = f"{dataset_path}.tmp"
+    combined.to_parquet(tmp_path, index=False)
+    os.replace(tmp_path, dataset_path)
     return combined
 
 #runs through df and marks each of the papers with their final ingestion status

@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# brings the dataset up to date with new arXiv papers, then reruns preprocessing
-# arXiv announces new papers every weekday, so running this about once a week is enough
+# brings the dataset up to date with new arXiv papers, then reruns preprocessing and checks nothing was missed
+# the GitHub workflow runs this Mon/Wed/Fri, it can also be run locally
 #
 # usage (from anywhere):
-#   ./scripts/pull_recent_papers.sh                   # pull everything new since the last run
+#   ./scripts/pull_recent_papers.sh                   # pull everything new since the newest paper we have
 #   ./scripts/pull_recent_papers.sh --delete-pdfs     # also delete PDFs that were fully ingested (saves disk space)
 #   ./scripts/pull_recent_papers.sh --snapshot        # also save a dated copy of the clean dataset for evaluation
 #
-# settings can be overridden with env vars, e.g. MAX_RESULTS=50 ./scripts/pull_recent_papers.sh
+# settings can be overridden with env vars, e.g. MAX_PAPERS=20 ./scripts/pull_recent_papers.sh
+#
+# how it avoids losing papers:
+#   - new papers are processed oldest first and saved every BATCH_SIZE papers, so a crash or timeout keeps the work done so far
+#   - at most MAX_PAPERS are processed per run, the rest (the backlog) is picked up by the next run with no gaps
+#   - papers whose PDF failed in the last RETRY_DAYS days are retried
+#   - at the end, the coverage check compares our dataset against arXiv's own list of papers
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -15,9 +21,14 @@ cd "$(dirname "$0")/.."
 PYTHON="${PYTHON:-.venv/bin/python}"
 DATA_DIR="${DATA_DIR:-data}"
 CATEGORY="${CATEGORY:-cat:cs.AI}"
-MAX_RESULTS="${MAX_RESULTS:-2000}"   # safety cap, the --since date is what actually limits the pull
-OVERLAP_DAYS="${OVERLAP_DAYS:-2}"    # re-check a couple of days back for late announcements, duplicates are skipped
+MAX_PAPERS="${MAX_PAPERS:-1500}"      # new papers per run (~8s each, so 1500 is ~3.3h, under GitHub's 5h limit)
+BATCH_SIZE="${BATCH_SIZE:-100}"       # save progress every this many papers
+MAX_RESULTS="${MAX_RESULTS:-20000}"   # safety cap on metadata records fetched from the arXiv API
+OVERLAP_DAYS="${OVERLAP_DAYS:-2}"     # re-check a couple of days back for late announcements, duplicates are skipped
+RETRY_DAYS="${RETRY_DAYS:-14}"        # retry failed PDFs from up to this many days ago
 FIRST_RUN_DAYS="${FIRST_RUN_DAYS:-7}" # how far back to go when there is no dataset yet
+CHECK_STRICT="${CHECK_STRICT:-false}" # true = fail (exit 1) if the coverage check finds missing papers
+RUN_CHECK="${RUN_CHECK:-true}"        # the GitHub workflow runs the check itself, after publishing
 
 DELETE_PDFS=false
 SNAPSHOT=false
@@ -41,40 +52,45 @@ import os, pandas as pd
 print(len(pd.read_parquet('$DATASET')) if os.path.exists('$DATASET') else 0)"
 }
 
-# start from the newest paper we already have, minus the overlap
+# start from the newest paper we have (minus the overlap), or earlier if a recent PDF failed and needs a retry
 SINCE=$("$PYTHON" -c "
 import os, datetime as dt, pandas as pd
-if os.path.exists('$DATASET'):
-    newest = pd.to_datetime(pd.read_parquet('$DATASET', columns=['published'])['published']).max().date()
-    print(newest - dt.timedelta(days=$OVERLAP_DAYS))
+if not os.path.exists('$DATASET'):
+    print(dt.date.today() - dt.timedelta(days=$FIRST_RUN_DAYS))
 else:
-    print(dt.date.today() - dt.timedelta(days=$FIRST_RUN_DAYS))")
+    df = pd.read_parquet('$DATASET', columns=['published', 'ingestion_status'])
+    published = pd.to_datetime(df['published'], utc=True).dt.date
+    # never reach back before our oldest paper, the dataset only promises completeness from there on
+    since = max(published.max() - dt.timedelta(days=$OVERLAP_DAYS), published.min())
+    retry_from = dt.date.today() - dt.timedelta(days=$RETRY_DAYS)
+    failed = published[(df['ingestion_status'] != 'complete') & (published >= retry_from)]
+    if len(failed):
+        since = min(since, failed.min())
+    print(since)")
 
 BEFORE=$(count_papers)
 echo "dataset has $BEFORE papers, fetching $CATEGORY papers published since $SINCE"
+# recorded right away so the workflow's coverage check still knows the window even if ingestion times out
+if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "since=$SINCE" >> "$GITHUB_OUTPUT"; fi
 
+INGEST_LOG="$(mktemp)"
 "$PYTHON" -m src.ingestion.cli \
     --category "$CATEGORY" \
     --max-results "$MAX_RESULTS" \
     --since "$SINCE" \
     --raw-pdf-dir "$RAW_PDF_DIR" \
-    --dataset-path "$DATASET"
+    --dataset-path "$DATASET" \
+    --max-papers "$MAX_PAPERS" \
+    --batch-size "$BATCH_SIZE" | tee "$INGEST_LOG"
+BACKLOG=$(sed -n 's/.*, \([0-9]*\) more left for the next run.*/\1/p' "$INGEST_LOG" | tail -1)
+BACKLOG="${BACKLOG:-0}"
+rm -f "$INGEST_LOG"
 
 AFTER=$(count_papers)
 echo "added $((AFTER - BEFORE)) new papers ($AFTER total)"
-# lets the GitHub workflow skip publishing a release when nothing changed
-if [ -n "${GITHUB_OUTPUT:-}" ]; then
-    echo "added=$((AFTER - BEFORE))" >> "$GITHUB_OUTPUT"
-    echo "total=$AFTER" >> "$GITHUB_OUTPUT"
+if [ "$BACKLOG" -gt 0 ]; then
+    echo "backlog: $BACKLOG papers left for the next run"
 fi
-
-# if the window holds as many papers as the cap, the fetch probably stopped before reaching $SINCE
-"$PYTHON" -c "
-import pandas as pd
-df = pd.read_parquet('$DATASET', columns=['published'])
-in_window = (pd.to_datetime(df['published']).dt.date >= pd.Timestamp('$SINCE').date()).sum()
-if in_window >= $MAX_RESULTS:
-    print('WARNING: hit MAX_RESULTS=$MAX_RESULTS, some papers since $SINCE may be missing. rerun with a higher MAX_RESULTS')"
 
 "$PYTHON" -m src.preprocessing.cli --input "$DATASET" --output "$CLEAN" --report "$REPORT"
 
@@ -95,4 +111,20 @@ if $SNAPSHOT; then
     SNAPSHOT_PATH="$DATA_DIR/snapshots/papers_clean_$(date +%Y-%m-%d).parquet"
     cp "$CLEAN" "$SNAPSHOT_PATH"
     echo "saved evaluation snapshot to $SNAPSHOT_PATH"
+fi
+
+# lets the GitHub workflow decide whether to publish a release
+if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    {
+        echo "added=$((AFTER - BEFORE))"
+        echo "total=$AFTER"
+        echo "backlog=$BACKLOG"
+    } >> "$GITHUB_OUTPUT"
+fi
+
+# compare against arXiv's own list of papers, last so the data above is always saved first
+if [ "$RUN_CHECK" = "true" ]; then
+    STRICT_FLAG=""
+    if [ "$CHECK_STRICT" = "true" ]; then STRICT_FLAG="--strict"; fi
+    "$PYTHON" -m src.ingestion.check_coverage --dataset "$DATASET" --category "$CATEGORY" --since "$SINCE" $STRICT_FLAG
 fi

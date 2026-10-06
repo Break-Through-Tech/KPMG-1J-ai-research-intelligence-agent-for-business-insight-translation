@@ -2,6 +2,11 @@
 # teammates read the newest data straight from the "latest" release, no accounts or setup needed:
 #   pd.read_parquet("https://github.com/<org>/<repo>/releases/latest/download/papers_clean.parquet")
 # only this workflow publishes data, so there is always exactly one up to date copy
+#
+# how we know it works:
+#   - every run shows a green check or red X on the Actions tab, and GitHub emails whoever set up the schedule when a run fails
+#   - every release's notes say how many papers were added, the total, the date range and any backlog
+#   - the last step asks arXiv for its own list of papers in the window and fails the run if we're missing any
 
 name: Update arXiv corpus
 
@@ -11,6 +16,13 @@ on:
     # "0 4" while daylight saving time is on (until Nov 1 2026), change to "0 5" after DST ends
     - cron: "0 4 * * 1,3,5"
   workflow_dispatch:   # adds a "Run workflow" button on the Actions tab
+    inputs:
+      max_papers:
+        description: "Max new papers to process this run (try 20 for a quick test). The rest wait for the next run."
+        default: "1500"
+      first_run_days:
+        description: "Days to look back if no dataset has been published yet"
+        default: "7"
 
 permissions:
   contents: write      # needed to create releases, uses GitHub's built-in token so no secrets are required
@@ -22,12 +34,14 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 300   # the first catch-up run can be long, normal runs take ~20 min
+    timeout-minutes: 330
     env:
       GH_TOKEN: ${{ github.token }}
       PYTHON: python
       PYTHONUNBUFFERED: "1"
-      MAX_RESULTS: "5000"
+      MAX_PAPERS: ${{ inputs.max_papers || '1500' }}
+      FIRST_RUN_DAYS: ${{ inputs.first_run_days || '7' }}
+      RUN_CHECK: "false"   # the coverage check runs as the last step instead, after publishing
 
     steps:
       - name: Check out repo
@@ -46,26 +60,46 @@ jobs:
         run: python -m pytest tests/ -q
 
       - name: Download the latest published dataset
+        id: download
         run: |
           mkdir -p data
           # the first run has no release yet, the update script then starts from the last few days
           gh release download --repo "${{ github.repository }}" --dir data \
             --pattern papers.parquet --pattern papers_clean.parquet --pattern preprocess_report.json \
             || echo "no published dataset yet, starting fresh"
+          echo "before=$(python -c "import os, pandas as pd; print(len(pd.read_parquet('data/papers.parquet')) if os.path.exists('data/papers.parquet') else 0)")" >> "$GITHUB_OUTPUT"
 
-      - name: Pull new papers and preprocess
+      - name: Pull new papers
         id: update
+        # stop ingesting with time to spare, so the steps below still publish everything saved so far
+        timeout-minutes: 270
         run: ./scripts/pull_recent_papers.sh --delete-pdfs
 
+      - name: Preprocess whatever was saved
+        # runs even if the step above failed or timed out partway, since its batches were already saved
+        if: ${{ !cancelled() }}
+        id: count
+        run: |
+          if [ ! -f data/papers.parquet ]; then echo "added=0" >> "$GITHUB_OUTPUT"; exit 0; fi
+          python -m src.preprocessing.cli
+          AFTER=$(python -c "import pandas as pd; print(len(pd.read_parquet('data/papers.parquet')))")
+          echo "after=$AFTER" >> "$GITHUB_OUTPUT"
+          echo "added=$((AFTER - ${{ steps.download.outputs.before }}))" >> "$GITHUB_OUTPUT"
+
       - name: Publish a new data release
-        if: steps.update.outputs.added != '0'
+        if: ${{ !cancelled() && steps.count.outputs.added != '0' && steps.count.outputs.added != '' }}
         run: |
           TAG="data-$(date -u +%Y-%m-%d-%H%M)"
           python - <<'EOF' > notes.md
           import json
           r = json.load(open("data/preprocess_report.json"))
-          print(f"Added **${{ steps.update.outputs.added }}** new papers, **{r['papers_out']}** total "
+          print(f"Added **${{ steps.count.outputs.added }}** new papers, **{r['papers_out']}** total "
                 f"({r['usable_papers']} usable), published {r['date_range'][0]} to {r['date_range'][1]}.")
+          backlog = "${{ steps.update.outputs.backlog }}"
+          if backlog and backlog != "0":
+              print(f"\n**Backlog:** {backlog} more papers will be picked up by the next run.")
+          if "${{ steps.update.outcome }}" != "success":
+              print("\n**Note:** the ingest step stopped early (${{ steps.update.outcome }}); everything saved before that is included, the next run continues from here.")
           print()
           print("- `papers_clean.parquet`: cleaned text, sections and quality flags (use this one)")
           print("- `papers.parquet`: raw ingestion output, used by the next update run")
@@ -79,5 +113,10 @@ jobs:
             --latest
 
       - name: Nothing new
-        if: steps.update.outputs.added == '0'
+        if: ${{ !cancelled() && steps.count.outputs.added == '0' }}
         run: echo "no new papers since the last release, nothing published"
+
+      - name: Check we didn't miss any papers
+        # compares against arXiv's own list for the window this run covered, fails the run (and emails) if anything is missing
+        if: ${{ !cancelled() && steps.update.outputs.since != '' }}
+        run: python -m src.ingestion.check_coverage --since "${{ steps.update.outputs.since }}" --strict

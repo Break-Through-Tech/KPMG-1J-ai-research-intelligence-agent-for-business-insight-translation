@@ -14,6 +14,8 @@ def main():
     parser.add_argument("--since", type=date.fromisoformat, default=None)
     parser.add_argument("--raw-pdf-dir", default="data/raw_pdfs")
     parser.add_argument("--dataset-path", default="data/papers.parquet")
+    parser.add_argument("--max-papers", type=int, default=None, help="cap on new papers processed this run (the rest wait for the next run)")
+    parser.add_argument("--batch-size", type=int, default=None, help="save progress every N papers")
     args = parser.parse_args()
 
     run_pipeline(
@@ -22,6 +24,8 @@ def main():
         raw_pdf_dir=args.raw_pdf_dir,
         dataset_path=args.dataset_path,
         since=args.since,
+        max_papers=args.max_papers,
+        batch_size=args.batch_size,
     )
 
 if __name__ == "__main__":

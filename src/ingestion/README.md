@@ -38,6 +38,12 @@ run it from the project root as a module, so the relative imports work so for ex
 | `--since` | none | only include papers published on or after this date (`YYYY-MM-DD`) |
 | `--raw-pdf-dir` | `data/raw_pdfs` | where PDFs are saved |
 | `--dataset-path` | `data/papers.parquet` | where the parquet dataset is saved |
+| `--max-papers` | none | process at most this many new papers this run, oldest first; the rest are left for the next run |
+| `--batch-size` | none | save progress every this many papers, so a crash or timeout keeps the work done so far |
+
+When `--max-papers` or `--batch-size` is set, new papers are processed **oldest first**, so a run that stops early never leaves a gap; the next run continues where it stopped. Without them, the pipeline behaves exactly as before. Saving writes to a temporary file first and then swaps it in, so a crash mid-save can't corrupt the dataset.
+
+`check_coverage.py` is a separate check: it asks arXiv for every paper in a date window and reports any that are missing from the dataset (`python -m src.ingestion.check_coverage --since 2026-10-05 --strict`).
 
 ## what the output is
 
