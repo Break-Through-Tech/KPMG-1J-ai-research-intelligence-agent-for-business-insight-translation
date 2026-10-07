@@ -9,8 +9,9 @@ PICTURE_BLOCK_RE = re.compile(r"<!-- Start of picture text -->.*?<!-- End of pic
 PICTURE_PLACEHOLDER_RE = re.compile(r"\[Picture Omitted\]|\*\*==> picture \[.*?\] intentionally omitted <==\*\*")
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
-# control characters (keeps \t and \n), zero width characters, soft hyphens and the unicode replacement char
-JUNK_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u00ad\u200b-\u200d\u2060\ufeff\ufffd]")
+# control characters (keeps \t and \n), zero width characters, soft hyphens, the unicode replacement char
+# and lone surrogates (half of a unicode pair, which can't be saved to parquet)
+JUNK_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u00ad\u200b-\u200d\u2060\ufeff\ufffd\ud800-\udfff]")
 
 SUP_RE = re.compile(r"<sup>(.*?)</sup>", re.DOTALL)
 SUB_RE = re.compile(r"<sub>(.*?)</sub>", re.DOTALL)

@@ -19,7 +19,7 @@ on:
     inputs:
       max_papers:
         description: "Max new papers to process this run (try 20 for a quick test). The rest wait for the next run."
-        default: "1500"
+        default: "1000"
       first_run_days:
         description: "Days to look back if no dataset has been published yet"
         default: "7"
@@ -39,7 +39,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       PYTHON: python
       PYTHONUNBUFFERED: "1"
-      MAX_PAPERS: ${{ inputs.max_papers || '1500' }}
+      MAX_PAPERS: ${{ inputs.max_papers || '1000' }}
       FIRST_RUN_DAYS: ${{ inputs.first_run_days || '7' }}
       RUN_CHECK: "false"   # the coverage check runs as the last step instead, after publishing
 
@@ -105,12 +105,22 @@ jobs:
           print("- `papers.parquet`: raw ingestion output, used by the next update run")
           print("- `preprocess_report.json`: corpus summary")
           EOF
-          gh release create "$TAG" \
-            data/papers_clean.parquet data/papers.parquet data/preprocess_report.json \
-            --repo "${{ github.repository }}" \
-            --title "Corpus $(date -u +%Y-%m-%d)" \
-            --notes-file notes.md \
-            --latest
+          # GitHub's API occasionally returns 500s, so retry, removing any half-created release first
+          for attempt in 1 2 3 4; do
+            if gh release create "$TAG" \
+                data/papers_clean.parquet data/papers.parquet data/preprocess_report.json \
+                --repo "${{ github.repository }}" \
+                --title "Corpus $(date -u +%Y-%m-%d)" \
+                --notes-file notes.md \
+                --latest; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 4 ]; then echo "publishing failed 4 times" >&2; exit 1; fi
+            WAIT=$((30 * 2 ** (attempt - 1)))
+            echo "publishing failed (attempt $attempt/4), retrying in ${WAIT}s"
+            gh release delete "$TAG" --repo "${{ github.repository }}" --yes --cleanup-tag || true
+            sleep "$WAIT"
+          done
 
       - name: Nothing new
         if: ${{ !cancelled() && steps.count.outputs.added == '0' }}

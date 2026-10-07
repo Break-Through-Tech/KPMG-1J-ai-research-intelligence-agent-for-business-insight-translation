@@ -127,3 +127,53 @@ def test_coverage_window_ends_before_newest_saved_paper(tmp_path):
         return set()
     check_coverage(path, "cat:cs.AI", date(2026, 10, 1), fetch_ids=fake_fetch)
     assert seen["end"] < START + timedelta(hours=1)  # newest saved paper is at +1h
+
+
+# ---------- bad characters and outages ----------
+
+def test_lone_surrogate_in_extracted_text_does_not_crash_the_save(fake_arxiv, tmp_path, monkeypatch):
+    # pymupdf4llm returned "\ud835" (half of a math-font character) for a real paper, which crashed the batch save
+    def extract_with_bad_char(papers):
+        for p in papers:
+            p["extracted_text"] = "uses the \ud835 math font"
+            p["extraction_status"] = "extracted"
+        return papers
+    monkeypatch.setattr(pipeline, "extract_all", extract_with_bad_char)
+
+    path = tmp_path / "papers.parquet"
+    pipeline.run_pipeline(dataset_path=str(path), raw_pdf_dir=str(tmp_path), batch_size=5)
+    saved = pd.read_parquet(path)
+    assert len(saved) == 10
+    assert not any("\ud835" in text for text in saved["extracted_text"])
+
+
+def test_merge_and_save_strips_surrogates_from_any_field(tmp_path):
+    from src.ingestion.dataset import merge_and_save
+    row = {"arxiv_id": "x1v1", "title": "bad \udc00 title", "extracted_text": "ok",
+           "download_status": "downloaded", "extraction_status": "extracted"}
+    merge_and_save(pd.DataFrame(), [row], str(tmp_path / "p.parquet"))
+    assert pd.read_parquet(tmp_path / "p.parquet")["title"][0] == "bad  title"
+
+
+def _run_coverage_cli(monkeypatch, path, fetch):
+    import sys
+    from src.ingestion import check_coverage as cc
+    monkeypatch.setattr(cc, "arxiv_ids_in_window", fetch)
+    monkeypatch.setattr(sys, "argv", ["check_coverage", "--dataset", path, "--since", "2026-10-01", "--strict"])
+    cc.main()
+
+
+def test_coverage_cli_warns_but_passes_when_arxiv_is_down(tmp_path, monkeypatch, capsys):
+    from src.ingestion.check_coverage import ArxivUnavailable
+    path = _dataset(tmp_path, [("a", "complete"), ("b", "complete")])
+    def down(category, start, end):
+        raise ArxivUnavailable("503")
+    _run_coverage_cli(monkeypatch, path, down)   # no SystemExit = the run stays green
+    assert "::warning::" in capsys.readouterr().out
+
+
+def test_coverage_cli_fails_when_papers_are_missing(tmp_path, monkeypatch):
+    path = _dataset(tmp_path, [("a", "complete"), ("b", "complete")])
+    with pytest.raises(SystemExit) as exit_info:
+        _run_coverage_cli(monkeypatch, path, lambda c, s, e: {"a", "zzz"})
+    assert exit_info.value.code == 1

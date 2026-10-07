@@ -78,20 +78,24 @@ Each run picks up **every** cs.AI paper (cross-lists included) published since t
 
 | run | what it picks up | roughly |
 |---|---|---|
-| Monday | everything since Friday's run (includes the weekend) | 550–800 papers, ~1–1.5 hrs |
-| Wednesday | everything since Monday's run | ~550 papers, ~1 hr |
-| Friday | everything since Wednesday's run | ~550 papers, ~1 hr |
+| Monday | everything since Friday's run (includes the weekend) | 550–800 papers, ~2–3 hrs |
+| Wednesday | everything since Monday's run | ~550 papers, ~2 hrs |
+| Friday | everything since Wednesday's run | ~550 papers, ~2 hrs |
+
+Each paper takes about 13.5 seconds (arXiv's required 3 second pause between downloads, plus downloading and reading the PDF).
 
 **How it makes sure no papers get lost**
 - New papers are processed **oldest first** and **saved every 100 papers**, so if a run crashes or runs long, everything done so far is kept and published.
-- Each run handles up to 1,500 papers (about 3.3 hours). If there are more, the rest is a **backlog** that the next run starts on, exactly where this one stopped, so there are no gaps.
+- Each run handles up to 1,000 papers (about 3.75 hours). If there are more, the rest is a **backlog** that the next run starts on, exactly where this one stopped, so there are no gaps.
+- If arXiv's API is having trouble, ingestion waits 5 minutes and tries again (up to 3 times). If GitHub has trouble publishing the release, that's retried too.
+- Text from the PDF reader is cleaned of broken characters before saving, so one odd paper can't crash a batch.
 - Papers whose PDF failed to download or extract are retried on the next runs (for up to 14 days).
 - PDFs aren't stored anywhere, since the text is already saved and every paper links back to arXiv.
 
 **How we know it's working**
 - Every run gets a ✅ or ❌ on the **Actions** tab, and GitHub emails the person who set up the workflow when a scheduled run fails. The unit tests run first, so broken code fails before it can touch the data.
 - Every run that adds papers publishes a release whose notes say how many were added, the new total, the date range, and any backlog. The end date should keep moving forward.
-- The last step asks arXiv for its own list of every cs.AI paper in the window the run covered and compares it with our dataset. If anything is missing, it lists the IDs and turns the run ❌.
+- The last step asks arXiv for its own list of every cs.AI paper in the window the run covered and compares it with our dataset. If anything is missing, it lists the IDs and turns the run ❌. If arXiv can't be reached to do the check, the run shows a ⚠️ warning instead, so ❌ always means papers are actually missing.
 
 GitHub schedules use UTC, so when daylight saving time ends (Nov 1) the cron line in the workflow needs to change from `"0 4 * * 1,3,5"` to `"0 5 * * 1,3,5"` to stay at midnight Eastern.
 

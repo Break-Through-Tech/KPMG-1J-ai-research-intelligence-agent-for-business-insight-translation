@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import pandas as pd
 
+from .clean_text import strip_surrogates
+
 #put all current information into a pd
 def load_existing(dataset_path):
     if os.path.exists(dataset_path):
@@ -26,6 +28,8 @@ def get_ingested_ids(existing_df):
 
 #merge current and old papers and save this
 def merge_and_save(existing_df, new_rows, dataset_path):
+    # safety net: a single bad character in any text field would otherwise crash the save and lose the batch
+    new_rows = [{k: strip_surrogates(v) for k, v in row.items()} for row in new_rows]
     new_df = pd.DataFrame(new_rows)
     new_df["ingestion_status"] = new_df.apply(compute_ingestion_status, axis=1)
     combined = pd.concat([existing_df, new_df], ignore_index=True)

@@ -26,18 +26,27 @@ def _base_id(arxiv_id: str) -> str:
     return re.sub(r"v\d+$", "", arxiv_id)
 
 
-def _get(params, max_retries=4):
+class ArxivUnavailable(RuntimeError):
+    """arXiv couldn't be reached, so coverage can't be verified (this is not the same as papers missing)"""
+
+
+def _get(params, max_retries=6):
     wait = 5
     for attempt in range(1, max_retries + 1):
-        resp = requests.get(API_URL, params=params, timeout=120)
-        if resp.status_code == 200:
+        try:
+            resp = requests.get(API_URL, params=params, timeout=120)
+            status = resp.status_code
+        except requests.RequestException as e:
+            resp, status = None, type(e).__name__
+        if status == 200:
             return resp.content
-        if resp.status_code not in RETRY_CODES:
+        if resp is not None and status not in RETRY_CODES:
             resp.raise_for_status()
-        print(f"arXiv returned {resp.status_code}, retrying in {wait}s ({attempt}/{max_retries})")
-        time.sleep(wait)
-        wait *= 2
-    raise RuntimeError(f"arXiv API still failing after {max_retries} retries")
+        if attempt < max_retries:
+            print(f"arXiv returned {status}, retrying in {wait}s ({attempt}/{max_retries})")
+            time.sleep(wait)
+            wait = min(wait * 2, 120)
+    raise ArxivUnavailable(f"arXiv API still failing after {max_retries} attempts (last: {status})")
 
 
 def arxiv_ids_in_window(category: str, start: datetime, end: datetime) -> set[str]:
@@ -57,7 +66,8 @@ def arxiv_ids_in_window(category: str, start: datetime, end: datetime) -> set[st
     return ids
 
 
-def check_coverage(dataset_path: str, category: str, since: date, fetch_ids=arxiv_ids_in_window) -> dict:
+def check_coverage(dataset_path: str, category: str, since: date, fetch_ids=None) -> dict:
+    fetch_ids = fetch_ids or arxiv_ids_in_window
     df = pd.read_parquet(dataset_path, columns=["arxiv_id", "published", "ingestion_status"])
     df["published"] = pd.to_datetime(df["published"], utc=True)
     df["base_id"] = df["arxiv_id"].map(_base_id)
@@ -91,7 +101,12 @@ def main():
     parser.add_argument("--strict", action="store_true", help="exit with an error if any paper is missing")
     args = parser.parse_args()
 
-    result = check_coverage(args.dataset, args.category, args.since)
+    try:
+        result = check_coverage(args.dataset, args.category, args.since)
+    except ArxivUnavailable as e:
+        # a warning, not a failure: a red run should only ever mean papers are actually missing
+        print(f"::warning::couldn't reach arXiv to verify coverage for this run, rerun the check later with: python -m src.ingestion.check_coverage --since {args.since} ({e})")
+        return
     print(f"coverage check {result['start']:%Y-%m-%d %H:%M} -> {result['end']:%Y-%m-%d %H:%M} UTC: "
           f"arXiv lists {result['expected']} papers, missing {len(result['missing'])}, "
           f"failed PDFs {len(result['incomplete'])}")

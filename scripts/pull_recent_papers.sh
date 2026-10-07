@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 PYTHON="${PYTHON:-.venv/bin/python}"
 DATA_DIR="${DATA_DIR:-data}"
 CATEGORY="${CATEGORY:-cat:cs.AI}"
-MAX_PAPERS="${MAX_PAPERS:-1500}"      # new papers per run (~8s each, so 1500 is ~3.3h, under GitHub's 5h limit)
+MAX_PAPERS="${MAX_PAPERS:-1000}"      # new papers per run (~13.5s each, so 1000 is ~3.75h, under the workflow's 4.5h step limit)
 BATCH_SIZE="${BATCH_SIZE:-100}"       # save progress every this many papers
 MAX_RESULTS="${MAX_RESULTS:-20000}"   # safety cap on metadata records fetched from the arXiv API
 OVERLAP_DAYS="${OVERLAP_DAYS:-2}"     # re-check a couple of days back for late announcements, duplicates are skipped
@@ -29,6 +29,8 @@ RETRY_DAYS="${RETRY_DAYS:-14}"        # retry failed PDFs from up to this many d
 FIRST_RUN_DAYS="${FIRST_RUN_DAYS:-7}" # how far back to go when there is no dataset yet
 CHECK_STRICT="${CHECK_STRICT:-false}" # true = fail (exit 1) if the coverage check finds missing papers
 RUN_CHECK="${RUN_CHECK:-true}"        # the GitHub workflow runs the check itself, after publishing
+INGEST_ATTEMPTS="${INGEST_ATTEMPTS:-3}" # retry ingestion this many times if it fails (e.g. the arXiv API is down)
+RETRY_WAIT="${RETRY_WAIT:-300}"       # seconds to wait between attempts
 
 DELETE_PDFS=false
 SNAPSHOT=false
@@ -73,15 +75,27 @@ echo "dataset has $BEFORE papers, fetching $CATEGORY papers published since $SIN
 # recorded right away so the workflow's coverage check still knows the window even if ingestion times out
 if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "since=$SINCE" >> "$GITHUB_OUTPUT"; fi
 
+# retrying is safe: finished batches are already saved and already-ingested papers are skipped
 INGEST_LOG="$(mktemp)"
-"$PYTHON" -m src.ingestion.cli \
-    --category "$CATEGORY" \
-    --max-results "$MAX_RESULTS" \
-    --since "$SINCE" \
-    --raw-pdf-dir "$RAW_PDF_DIR" \
-    --dataset-path "$DATASET" \
-    --max-papers "$MAX_PAPERS" \
-    --batch-size "$BATCH_SIZE" | tee "$INGEST_LOG"
+for attempt in $(seq 1 "$INGEST_ATTEMPTS"); do
+    if "$PYTHON" -m src.ingestion.cli \
+        --category "$CATEGORY" \
+        --max-results "$MAX_RESULTS" \
+        --since "$SINCE" \
+        --raw-pdf-dir "$RAW_PDF_DIR" \
+        --dataset-path "$DATASET" \
+        --max-papers "$MAX_PAPERS" \
+        --batch-size "$BATCH_SIZE" | tee "$INGEST_LOG"; then
+        break
+    fi
+    if [ "$attempt" -eq "$INGEST_ATTEMPTS" ]; then
+        echo "ingestion failed $INGEST_ATTEMPTS times, giving up (everything saved so far is kept)" >&2
+        rm -f "$INGEST_LOG"
+        exit 1
+    fi
+    echo "ingestion failed (attempt $attempt/$INGEST_ATTEMPTS), often the arXiv API having trouble. retrying in ${RETRY_WAIT}s"
+    sleep "$RETRY_WAIT"
+done
 BACKLOG=$(sed -n 's/.*, \([0-9]*\) more left for the next run.*/\1/p' "$INGEST_LOG" | tail -1)
 BACKLOG="${BACKLOG:-0}"
 rm -f "$INGEST_LOG"
