@@ -1,6 +1,7 @@
 import chromadb
 from src.vectorizing.embedder import TextEmbedder
 
+
 class ChromaRetriever:
     def __init__(self, db_dir: str = "data/chroma_db", collection_name: str = "kpmg_research_collection"):
         self.client = chromadb.PersistentClient(path=db_dir)
@@ -17,6 +18,29 @@ class ChromaRetriever:
         )
         return results
 
+
 if __name__ == "__main__":
-    retriever = ChromaRetriever()
-    res = retriever.search("What are the key financial risks in AI adoption?", top_k=3)
+    print("--- Testing ChromaRetriever ---")
+    query = "What are the key financial risks in AI adoption?"
+    top_k = 3
+
+    print(f"Executing search for query: '{query}' (top_k={top_k})\n")
+
+    try:
+        retriever = ChromaRetriever()
+        res = retriever.search(query, top_k=top_k)
+
+        documents = res.get("documents", [[]])[0]
+        metadatas = res.get("metadatas", [[]])[0]
+        distances = res.get("distances", [[]])[0]
+
+        print(f"Retrieved {len(documents)} context chunks:\n")
+        for idx, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances), start=1):
+            print(f"[{idx}] Distance (Score): {dist:.4f}")
+            print(f"    Metadata: {meta}")
+            print(f"    Content snippet: {doc[:150]}...")
+            print("-" * 50)
+
+    except Exception as e:
+        print(f"Error executing ChromaRetriever: {e}")
+        print("Tip: Ensure 'data/chroma_db' exists and contains 'kpmg_research_collection'.")
