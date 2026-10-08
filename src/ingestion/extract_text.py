@@ -1,5 +1,6 @@
 # PDF -> raw text using PyMuPDF
 
+import os
 from pathlib import Path
 import pymupdf4llm #package for parsing pdfs and organizing the info
 
@@ -20,4 +21,6 @@ def extract_all(papers):
         text = extract_text(paper["pdf_path"])
         paper["extracted_text"] = text
         paper["extraction_status"] = "extracted" if text is not None else "failed"
+        if text is None and os.path.exists(paper["pdf_path"]):
+            os.remove(paper["pdf_path"]) # likely corrupt, so the retry downloads it again
     return papers

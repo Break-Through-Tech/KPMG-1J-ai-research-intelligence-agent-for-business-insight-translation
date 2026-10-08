@@ -177,3 +177,39 @@ def test_coverage_cli_fails_when_papers_are_missing(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as exit_info:
         _run_coverage_cli(monkeypatch, path, lambda c, s, e: {"a", "zzz"})
     assert exit_info.value.code == 1
+
+
+class _FakeResponse:
+    def __init__(self, body):
+        self.body = body
+
+    def raise_for_status(self):
+        pass
+
+    def iter_content(self, chunk_size):
+        yield self.body
+
+
+def test_html_error_page_is_not_saved_as_pdf(tmp_path, monkeypatch):
+    from src.ingestion import download_pdfs
+    monkeypatch.setattr(download_pdfs.requests, "get", lambda *a, **k: _FakeResponse(b"<html>rate limited</html>"))
+    dest = tmp_path / "pdfs" / "2609.00001v1.pdf"
+    assert download_pdfs.download_pdf("2609.00001v1", "http://x", str(dest)) == "failed"
+    assert not dest.exists() and not (tmp_path / "pdfs" / "2609.00001v1.pdf.part").exists()
+
+
+def test_real_pdf_is_saved(tmp_path, monkeypatch):
+    from src.ingestion import download_pdfs
+    monkeypatch.setattr(download_pdfs.requests, "get", lambda *a, **k: _FakeResponse(b"%PDF-1.5 fake body"))
+    dest = tmp_path / "pdfs" / "2609.00001v1.pdf"
+    assert download_pdfs.download_pdf("2609.00001v1", "http://x", str(dest)) == "downloaded"
+    assert dest.read_bytes().startswith(b"%PDF-")
+
+
+def test_failed_extraction_deletes_pdf_so_it_is_redownloaded(tmp_path, monkeypatch):
+    from src.ingestion import extract_text
+    pdf = tmp_path / "2609.00001v1.pdf"
+    pdf.write_bytes(b"%PDF-1.5 corrupt")
+    monkeypatch.setattr(extract_text, "extract_text", lambda path: None)
+    papers = extract_text.extract_all([{"download_status": "downloaded", "pdf_path": str(pdf)}])
+    assert papers[0]["extraction_status"] == "failed" and not pdf.exists()
