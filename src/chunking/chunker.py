@@ -11,7 +11,8 @@
 #   - title + section heading are prepended to the text we embed, but not to the stored text
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from functools import lru_cache
 
 # same rule of thumb preprocessing uses for est_tokens, so the numbers line up
 CHARS_PER_TOKEN = 4
@@ -26,6 +27,31 @@ class ChunkConfig:
     chunk_tokens: int = 512        # max size of a chunk
     overlap_tokens: int = 64       # how much of the end of one chunk is repeated at the start of the next
     min_section_tokens: int = 30   # sections shorter than this are merged into the next section
+    # when set, tokens are counted with this model's tokenizer, and chunk_tokens limits the whole
+    # embedded text (title + section + chunk), so the embedding model never cuts a chunk off.
+    # must be the same model the index embeds with
+    tokenizer: str | None = None
+
+
+@lru_cache(maxsize=None)
+def _load_tokenizer(name):
+    from transformers import AutoTokenizer
+    return AutoTokenizer.from_pretrained(name)
+
+
+def token_counter(cfg: ChunkConfig):
+    """count_tokens (characters / 4) by default, or real token counts from cfg.tokenizer"""
+    if not cfg.tokenizer:
+        return count_tokens
+    tokenizer = _load_tokenizer(cfg.tokenizer)
+
+    @lru_cache(maxsize=500_000)
+    def word_tokens(word):
+        return len(tokenizer(word, add_special_tokens=False)["input_ids"])
+
+    # bert-style tokenizers (bge included) split on whitespace first, so a text's count is the sum of
+    # its words' counts. caching per word keeps this fast, since windowing re-counts growing strings
+    return lambda text: sum(word_tokens(w) for w in text.split())
 
 
 # ---------- sentences ----------
@@ -63,11 +89,11 @@ def split_sentences(text: str) -> list[str]:
     return units
 
 
-def _hard_split(sentence: str, max_tokens: int) -> list[str]:
+def _hard_split(sentence: str, max_tokens: int, count=count_tokens) -> list[str]:
     """last resort for a single unit bigger than a chunk: split on words"""
     words, parts, current = sentence.split(), [], []
     for w in words:
-        if current and count_tokens(" ".join(current + [w])) > max_tokens:
+        if current and count(" ".join(current + [w])) > max_tokens:
             parts.append(" ".join(current))
             current = []
         current.append(w)
@@ -78,24 +104,24 @@ def _hard_split(sentence: str, max_tokens: int) -> list[str]:
 
 # ---------- windows ----------
 
-def window_text(text: str, cfg: ChunkConfig) -> list[str]:
+def window_text(text: str, cfg: ChunkConfig, count=count_tokens) -> list[str]:
     """packs sentences into chunks of at most cfg.chunk_tokens, repeating roughly
     cfg.overlap_tokens worth of whole sentences between neighbouring chunks"""
     units = []
     for s in split_sentences(text):
-        units.extend(_hard_split(s, cfg.chunk_tokens) if count_tokens(s) > cfg.chunk_tokens else [s])
+        units.extend(_hard_split(s, cfg.chunk_tokens, count) if count(s) > cfg.chunk_tokens else [s])
 
     chunks, current = [], []
     for unit in units:
-        if current and count_tokens(" ".join(current + [unit])) > cfg.chunk_tokens:
+        if current and count(" ".join(current + [unit])) > cfg.chunk_tokens:
             chunks.append(" ".join(current))
             # carry the last sentences forward as overlap, without letting overlap + next unit overflow
             overlap = []
             for prev in reversed(current):
-                if count_tokens(" ".join([prev] + overlap)) > cfg.overlap_tokens:
+                if count(" ".join([prev] + overlap)) > cfg.overlap_tokens:
                     break
                 overlap.insert(0, prev)
-            while overlap and count_tokens(" ".join(overlap + [unit])) > cfg.chunk_tokens:
+            while overlap and count(" ".join(overlap + [unit])) > cfg.chunk_tokens:
                 overlap.pop(0)
             current = overlap
         current.append(unit)
@@ -106,7 +132,7 @@ def window_text(text: str, cfg: ChunkConfig) -> list[str]:
 
 # ---------- sections -> chunks ----------
 
-def merge_short_sections(rows: list[dict], cfg: ChunkConfig) -> list[dict]:
+def merge_short_sections(rows: list[dict], cfg: ChunkConfig, count=count_tokens) -> list[dict]:
     """rows are one paper's sections in reading order. A section under cfg.min_section_tokens
     (often a heading with one sentence) is merged into the next section, keeping the next
     section's label. A short last section joins the one before it."""
@@ -117,7 +143,7 @@ def merge_short_sections(rows: list[dict], cfg: ChunkConfig) -> list[dict]:
             r["text"] = f"{carry['text']}\n\n{r['text']}"
             r["merged_from"] = carry.get("merged_from", []) + [carry["section"] or "(no section)"]
             carry = None
-        if count_tokens(r["text"]) < cfg.min_section_tokens:
+        if count(r["text"]) < cfg.min_section_tokens:
             carry = r
             continue
         merged.append(r)
@@ -138,14 +164,25 @@ def chunk_paper(rows: list[dict], cfg: ChunkConfig = ChunkConfig()) -> list[dict
     first = rows[0]
     meta = {
         "paper_id": first["paper_id"],
+        "version": first.get("version", 1),
         "title": first["title"],
         "authors": [str(a) for a in first["authors"]],
         "arxiv_url": first["arxiv_url"],
+        # carried through so the index can filter by date and topic
+        "published_date": first.get("published_date", ""),
+        "primary_category": first.get("primary_category", ""),
+        "categories": [str(c) for c in first.get("categories", [])],
     }
 
+    count = token_counter(cfg)
     pieces = []  # (section row, chunk text)
-    for r in merge_short_sections(rows, cfg):
-        for text in window_text(r["text"], cfg):
+    for r in merge_short_sections(rows, cfg, count):
+        section_cfg = cfg
+        if cfg.tokenizer:
+            # leave room for the title + section prefix and the model's 2 special tokens
+            prefix = f"{meta['title']}\nSection: {r['section'] or '(no section)'}\n\n"
+            section_cfg = replace(cfg, chunk_tokens=max(cfg.chunk_tokens - count(prefix) - 2, 2 * cfg.overlap_tokens))
+        for text in window_text(r["text"], section_cfg, count):
             pieces.append((r, text))
 
     chunks = []
@@ -163,6 +200,6 @@ def chunk_paper(rows: list[dict], cfg: ChunkConfig = ChunkConfig()) -> list[dict
             "text": text,
             # what gets embedded: the title and section give the chunk context it lacks on its own
             "text_for_embedding": f"{meta['title']}\nSection: {section}\n\n{text}",
-            "n_tokens": count_tokens(text),
+            "n_tokens": count(text),
         })
     return chunks

@@ -13,9 +13,13 @@ def make_sample_chunks():
 
     return pd.DataFrame([
         {
-            "chunk_id": "2609.30264v1::0000",
-            "paper_id": "2609.30264v1",
+            "chunk_id": "2609.30264::0000",
+            "paper_id": "2609.30264",
+            "version": 1,
             "title": "Retrieval Augmented Generation",
+            "published_date": "2026-09-30",
+            "primary_category": "cs.AI",
+            "categories": ["cs.AI", "cs.CL"],
             "authors": ["Test Author"],
             "arxiv_url": "https://arxiv.org/abs/2609.30264",
             "section": "1 Introduction",
@@ -37,9 +41,13 @@ def make_sample_chunks():
             "n_tokens": 20
         },
         {
-            "chunk_id": "2609.30264v1::0001",
-            "paper_id": "2609.30264v1",
+            "chunk_id": "2609.30264::0001",
+            "paper_id": "2609.30264",
+            "version": 1,
             "title": "Retrieval Augmented Generation",
+            "published_date": "2026-09-30",
+            "primary_category": "cs.AI",
+            "categories": ["cs.AI", "cs.CL"],
             "authors": ["Test Author"],
             "arxiv_url": "https://arxiv.org/abs/2609.30264",
             "section": "2 Methods",
@@ -167,3 +175,26 @@ def test_query_embedding():
         1.0,
         atol=1e-5
     )
+
+def test_query_instruction_only_for_bge_queries():
+    embedder = TextEmbedder()
+
+    assert embedder.query_instruction.startswith("Represent this sentence")
+
+    # the prefix changes the query vector, documents are embedded without it
+    query = "How can RAG help businesses?"
+
+    with_prefix = embedder.embed_query(query)
+    without_prefix = embedder.embed_documents([query])[0]
+
+    assert not np.allclose(with_prefix, without_prefix)
+
+
+def test_count_truncated():
+    embedder = TextEmbedder()
+
+    short_text = "A short chunk."
+    long_text = "word " * 2000
+
+    assert embedder.count_truncated([short_text]) == 0
+    assert embedder.count_truncated([short_text, long_text]) == 1

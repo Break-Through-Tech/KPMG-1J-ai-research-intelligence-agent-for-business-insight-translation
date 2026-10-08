@@ -19,7 +19,7 @@ papers_clean.parquet ──► prepare_for_chunking.py ──► chunk_input.jso
 From the project root:
 
 ```bash
-python prepare_for_chunking.py data/papers_clean.parquet data/chunk_input.jsonl
+python -m src.preprocessing.prepare_for_chunking   # data/papers_clean.parquet -> data/chunk_input.jsonl
 python -m src.chunking.cli
 python -m pytest tests/
 ```
@@ -34,6 +34,7 @@ python -m pytest tests/
 | `--chunk-tokens` | 512 | max chunk size |
 | `--overlap-tokens` | 64 | overlap between neighbouring chunks |
 | `--min-section-tokens` | 30 | shorter sections are merged into the next one |
+| `--tokenizer` | `BAAI/bge-small-en-v1.5` | count tokens with this model's tokenizer (must match the embedding model); `none` uses the characters / 4 estimate |
 
 ## what's kept and what's removed
 
@@ -46,14 +47,16 @@ Baseline: fixed-size chunks with overlap, with two rules on top.
 1. **A chunk never crosses a section boundary.** Each section row is chunked on its own, so every chunk has exactly one section to cite. Sections under 30 tokens (often a heading with one sentence) are merged into the next section of the same paper.
 2. **Chunks are built from whole sentences.** Sentences are added until the next one would go over 512 tokens. The overlap is the last ~64 tokens' worth of whole sentences from the previous chunk. A sentence only gets split if it alone is bigger than a chunk (usually a large table). Table rows and list items are kept as separate units.
 
-Token counts use the same estimate as preprocessing (characters / 4). Once we pick an embedding model, we should switch to its tokenizer.
+Token counts come from the embedding model's tokenizer (`--tokenizer`), and the 512 limit covers the whole embedded text: title + section prefix + chunk + the model's 2 special tokens. With the old characters / 4 estimate, 15.9% of chunks were longer than bge's 512-token limit and got cut off when embedded (math, tables and citations produce far more tokens than the estimate); with the tokenizer, none are. Counting is cached per word, which gives exactly the same counts for bert-style tokenizers like bge and keeps a full corpus run to about a minute. Changing `--tokenizer` or the sizes changes the chunk settings recorded in the index, so the index then needs `python -m src.indexing.cli --rebuild`.
 
 ## output schema (`data/chunks.parquet`)
 
 | column | description |
 |---|---|
-| `chunk_id` | `2609.30264v1::0003`, paper id + position in the paper |
-| `paper_id`, `title`, `authors`, `arxiv_url` | paper metadata, from `chunk_input.jsonl` |
+| `chunk_id` | `2609.30264::0003`, paper id + position in the paper |
+| `paper_id`, `version` | arXiv id without the version (`2609.30264`) and the version number, so a v2 replaces v1 instead of sitting next to it |
+| `title`, `authors`, `arxiv_url` | paper metadata, from `chunk_input.jsonl` |
+| `published_date`, `primary_category`, `categories` | for filtering by date and topic at retrieval time |
 | `section`, `section_type`, `section_id` | `3.2 Threat Model`, `method`, and the section row it came from |
 | `source` | `body`, `body_text` (paper had no headings), or `abstract_clean` |
 | `chunk_index`, `n_chunks_in_paper` | position of the chunk in the paper |
@@ -77,5 +80,5 @@ Published release with 1,200 papers (Sept 29 – Oct 2, 2026), 1,197 usable.
 ## open questions
 
 - **Chunk size.** 512 tokens with 64 overlap is a common starting point. We should compare it with larger chunks (the preprocessing EDA assumed 800) on the benchmark questions.
-- **Paper ids include the version.** `chunk_input.jsonl` uses `2609.30264v1`, so if a paper gets a v2, its chunks get new ids and the old ones should be removed from the index.
+- **Paper ids include the version.** Fixed: `paper_id` is now the id without the version, with `version` as its own column. `prepare_for_chunking --append` replaces an older version's rows instead of adding next to them.
 - **Math.** Some equations come through PDF extraction as scrambled text. That's an extraction issue, not a chunking one, but those chunks won't retrieve well.
