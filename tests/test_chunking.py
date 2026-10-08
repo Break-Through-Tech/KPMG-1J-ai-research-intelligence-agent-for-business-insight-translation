@@ -113,3 +113,13 @@ def test_no_headings_row_gets_a_label():
 
 def test_empty_rows_are_skipped():
     assert chunk_paper([row(0, "1 Intro", "introduction", "   ")], SMALL) == []
+
+
+def test_tokenizer_mode_fits_the_model_limit():
+    from transformers import AutoTokenizer
+    cfg = ChunkConfig(chunk_tokens=128, overlap_tokens=16, tokenizer="BAAI/bge-small-en-v1.5")
+    tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer)
+    chunks = chunk_paper(ROWS, cfg)
+    assert len(chunks) > 1
+    # the whole embedded text, with the model's special tokens, fits the limit
+    assert all(len(tokenizer(c["text_for_embedding"])["input_ids"]) <= 128 for c in chunks)

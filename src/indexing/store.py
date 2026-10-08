@@ -45,11 +45,20 @@ def open_index(index_dir, embedder, chunk_config = None, rebuild = False):
         "chunk_config": chunk_config
     }
     saved = load_manifest(index_dir)
-    if saved and not rebuild:
-        check_compatible(saved, current)
+    if chunk_config is None and saved:
+        # only searching (no chunk settings passed), so use the ones the index was built with
+        current["chunk_config"] = saved.get("chunk_config")
     db = lancedb.connect(index_dir)
-    table = db.create_table(TABLE_NAME, schema = make_schema(current["embedding_dim"]),
+    schema = make_schema(current["embedding_dim"])
+    table = db.create_table(TABLE_NAME, schema = schema,
                             mode="overwrite" if rebuild else "create", exist_ok = not rebuild)
+    if not rebuild and table.count_rows() == 0:
+        # an empty index has no vectors to mix up (e.g. a failed first run left it behind),
+        # so start it fresh with the current settings instead of refusing
+        table = db.create_table(TABLE_NAME, schema = schema, mode="overwrite")
+        rebuild = True
+    elif saved and not rebuild:
+        check_compatible(saved, current)
     if rebuild or not saved:
         save_manifest(index_dir, current)
     return table

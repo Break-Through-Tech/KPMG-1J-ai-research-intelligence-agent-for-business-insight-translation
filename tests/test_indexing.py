@@ -93,3 +93,21 @@ def test_different_model_is_refused(index, embedder):
 
     with pytest.raises(ValueError, match="rebuild"):
         open_index(path, OtherModel())
+
+
+def test_search_only_open_does_not_need_chunk_settings(tmp_path, embedder):
+    # built with chunk settings, then opened for searching without them (e.g. from a downloaded index)
+    table = open_index(tmp_path, embedder, chunk_config={"chunk_tokens": 512})
+    update_index(table, ALL, embedder, tmp_path)
+    assert open_index(tmp_path, embedder).count_rows() == 3
+    with pytest.raises(ValueError, match="rebuild"):
+        open_index(tmp_path, embedder, chunk_config={"chunk_tokens": 800})
+
+
+def test_empty_index_with_old_settings_is_not_blocked(tmp_path, embedder):
+    # a failed first run can leave an empty index whose manifest has different (or missing) settings
+    open_index(tmp_path, embedder, chunk_config=None)
+    table = open_index(tmp_path, embedder, chunk_config={"chunk_tokens": 512})
+    update_index(table, ALL, embedder, tmp_path)
+    assert table.count_rows() == 3
+    assert load_manifest(tmp_path)["chunk_config"] == {"chunk_tokens": 512}

@@ -76,7 +76,7 @@ Built from the 2026-10-07 release (1,217 usable papers, Sept 29 to Oct 2, 2026),
 | first build (embeds everything) | ~5.5 min on an M-series Mac; expect longer on the CPU-only GitHub runner |
 | second run (nothing new) | 7 s, 0 chunks embedded |
 | index size on disk / as `index.tar.gz` | 86 MB / 65 MB |
-| chunks longer than the model's 512-token limit | 5,221 (15.9%), so their endings aren't embedded (see open questions) |
+| chunks longer than the model's 512-token limit | 0 (was 5,221, 15.9%, before the chunker counted with bge's tokenizer; that build had 32,880 chunks, it's now 33,601) |
 
 ## in the GitHub workflow
 
@@ -84,8 +84,7 @@ Built from the 2026-10-07 release (1,217 usable papers, Sept 29 to Oct 2, 2026),
 
 ## open questions
 
-- **truncated chunks:** the chunker estimates tokens as characters / 4, but bge's tokenizer counts more tokens for math, tables and citations (p90 is 567 real tokens, p99 is 1,047). Fix by counting with the model's tokenizer in `src/chunking/chunker.py`, or by lowering `chunk_tokens`.
-- **appendix sections slipping through:** some appendix sections (e.g. "B Evaluation Metrics") aren't labeled `appendix` by preprocessing, so they get indexed.
+- **section labels for IEEE-style papers:** lettered subsections under Roman-numeral sections ("VI EXPERIMENTS" → "B Evaluation Metrics") aren't linked to their parent, so about 4.5% of chunks get the wrong `section_type` (mostly `other`). The text itself is correct main-body content; only the label used for citations is off. Fix belongs in `src/preprocessing/sections.py`.
 
 - **storage:** the index travels as a release asset for now (2 GB per-file limit). The plan is to move it to a bucket (S3, GCS or R2), which LanceDB can query directly; `manifest.py` would then need `pyarrow.fs` instead of `Path`.
 - **evaluation:** a known-item test (search each paper's title, check it comes back) and the benchmark queries, to compare chunk sizes, the bge query prefix and models.

@@ -25,6 +25,10 @@ def main():
     parser.add_argument("--since", help="only papers published on or after this date (YYYY-MM-DD)")
     args = parser.parse_args()
 
+    # fail before touching the index, so a missing input never leaves a half-made index behind
+    if not args.search and not Path(args.chunks).exists():
+        raise SystemExit(f"{args.chunks} not found, run the chunking step first: python -m src.chunking.cli")
+
     embedder = TextEmbedder(model_name=args.model)
     report = Path(args.chunk_report)
     chunk_config = json.loads(report.read_text())["config"] if report.exists() else None
