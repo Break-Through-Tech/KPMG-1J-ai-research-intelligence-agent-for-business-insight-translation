@@ -11,3 +11,11 @@ data/paper_stats.parquet
 .pytest_cache/
 data/snapshots/
 logs/
+
+# Chunking and vectorization generated outputs
+data/chunk_input.jsonl
+data/chunk_report.json
+data/chunks.parquet
+data/chunks_test.parquet
+data/vectorized/
+data/vectorized_test/
