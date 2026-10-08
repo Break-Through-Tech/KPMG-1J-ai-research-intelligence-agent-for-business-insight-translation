@@ -20,6 +20,7 @@ User Question:
 Executive Summary:
 """
 
+
 def format_rag_prompt(user_query: str, retrieved_docs: list, retrieved_metas: list) -> str:
     context_blocks = []
     for idx, (doc, meta) in enumerate(zip(retrieved_docs, retrieved_metas), 1):
@@ -35,3 +36,17 @@ def format_rag_prompt(user_query: str, retrieved_docs: list, retrieved_metas: li
         context_str=full_context,
         user_query=user_query
     )
+
+
+if __name__ == "__main__":
+    print("--- Testing Prompt Formatting ---")
+    dummy_query = "What are the financial risks of adopting enterprise LLMs?"
+    dummy_docs = [
+        "LLM deployment carries upfront infrastructure costs and ongoing API token fees that can fluctuate unpredictably."
+    ]
+    dummy_metas = [
+        {"title": "Enterprise AI Risk Assessment", "section": "Financial Projections"}
+    ]
+
+    formatted_prompt = format_rag_prompt(dummy_query, dummy_docs, dummy_metas)
+    print(formatted_prompt)
