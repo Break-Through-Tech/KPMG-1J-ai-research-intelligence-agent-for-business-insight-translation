@@ -1,6 +1,8 @@
-# pulls new arXiv cs.AI papers, preprocesses them, and publishes the dataset as a GitHub release
+# pulls new arXiv cs.AI papers, preprocesses, chunks and indexes them, and publishes the dataset
+# and search index as a GitHub release
 # teammates read the newest data straight from the "latest" release, no accounts or setup needed:
 #   pd.read_parquet("https://github.com/<org>/<repo>/releases/latest/download/papers_clean.parquet")
+#   gh release download --pattern index.tar.gz --dir data && tar -xzf data/index.tar.gz -C data
 # only this workflow publishes data, so there is always exactly one up to date copy
 #
 # how we know it works:
@@ -56,6 +58,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Cache the embedding model
+        # the tests and the indexing step both load it, so it's downloaded once and reused across runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-bge-small-en-v1.5
+
       - name: Run tests
         run: python -m pytest tests/ -q
 
@@ -67,6 +76,10 @@ jobs:
           gh release download --repo "${{ github.repository }}" --dir data \
             --pattern papers.parquet --pattern papers_clean.parquet --pattern preprocess_report.json \
             || echo "no published dataset yet, starting fresh"
+          # the search index travels as one archive; only new papers get embedded on top of it
+          gh release download --repo "${{ github.repository }}" --dir data --pattern index.tar.gz \
+            || echo "no published index yet, the indexing step builds one from scratch"
+          if [ -f data/index.tar.gz ]; then tar -xzf data/index.tar.gz -C data; fi
           echo "before=$(python -c "import os, pandas as pd; print(len(pd.read_parquet('data/papers.parquet')) if os.path.exists('data/papers.parquet') else 0)")" >> "$GITHUB_OUTPUT"
 
       - name: Pull new papers
@@ -86,6 +99,21 @@ jobs:
           echo "after=$AFTER" >> "$GITHUB_OUTPUT"
           echo "added=$((AFTER - ${{ steps.download.outputs.before }}))" >> "$GITHUB_OUTPUT"
 
+      - name: Chunk and index new papers
+        # chunk_input and chunks are rebuilt from papers_clean every run (seconds), but the index
+        # only embeds papers that are new or have a newer version, so the rest is reused.
+        # if this fails, the publish step below still runs and re-publishes the previous index
+        if: ${{ !cancelled() && steps.count.outputs.added != '0' && steps.count.outputs.added != '' }}
+        id: index
+        timeout-minutes: 45
+        run: |
+          python -m src.preprocessing.prepare_for_chunking
+          python -m src.chunking.cli
+          python -m src.indexing.cli
+          # smoke test: the updated index loads and answers a query
+          python -m src.indexing.cli --search "large language model agents" --k 3
+          tar -czf data/index.tar.gz -C data index
+
       - name: Publish a new data release
         if: ${{ !cancelled() && steps.count.outputs.added != '0' && steps.count.outputs.added != '' }}
         run: |
@@ -100,15 +128,28 @@ jobs:
               print(f"\n**Backlog:** {backlog} more papers will be picked up by the next run.")
           if "${{ steps.update.outcome }}" != "success":
               print("\n**Note:** the ingest step stopped early (${{ steps.update.outcome }}); everything saved before that is included, the next run continues from here.")
+          if "${{ steps.index.outcome }}" == "success":
+              m = json.load(open("data/index/index_manifest.json"))
+              print(f"\n**Search index:** {m['n_chunks']:,} chunks from {m['n_papers']:,} papers "
+                    f"({m['date_range'][0]} to {m['date_range'][1]}), model `{m['model_name']}`.")
+          else:
+              print("\n**Note:** the index wasn't updated this run (${{ steps.index.outcome }}); "
+                    "the previous index is re-published if there was one, and the next run catches up.")
           print()
           print("- `papers_clean.parquet`: cleaned text, sections and quality flags (use this one)")
           print("- `papers.parquet`: raw ingestion output, used by the next update run")
           print("- `preprocess_report.json`: corpus summary")
+          print("- `index.tar.gz`: LanceDB search index, unpack into `data/` and use `src/indexing` to search it")
+          print("- `chunk_report.json`: chunking summary")
           EOF
+          ASSETS=(data/papers_clean.parquet data/papers.parquet data/preprocess_report.json)
+          # index.tar.gz is the new index, or the downloaded previous one if indexing failed
+          for f in data/index.tar.gz data/chunk_report.json; do
+            if [ -f "$f" ]; then ASSETS+=("$f"); fi
+          done
           # GitHub's API occasionally returns 500s, so retry, removing any half-created release first
           for attempt in 1 2 3 4; do
-            if gh release create "$TAG" \
-                data/papers_clean.parquet data/papers.parquet data/preprocess_report.json \
+            if gh release create "$TAG" "${ASSETS[@]}" \
                 --repo "${{ github.repository }}" \
                 --title "Corpus $(date -u +%Y-%m-%d)" \
                 --notes-file notes.md \

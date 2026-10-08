@@ -19,3 +19,4 @@ data/chunks.parquet
 data/chunks_test.parquet
 data/vectorized/
 data/vectorized_test/
+data/index/
