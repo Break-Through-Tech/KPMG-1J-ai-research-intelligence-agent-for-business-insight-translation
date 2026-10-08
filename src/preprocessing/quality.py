@@ -2,15 +2,17 @@
 # ingestion marks a paper "complete" whenever to_markdown returns anything, even a near empty string,
 # so this is where silent failures get caught
 
+from .normalize import as_text
+
 MIN_BODY_CHARS = 5_000          # a real cs.AI paper body is tens of thousands of characters
 MAX_REPLACEMENT_RATIO = 0.01    # more than 1% unreadable characters means a broken text layer / font encoding
 
 # issues that make a paper unusable for indexing, the rest are informational
-BLOCKING_ISSUES = {"ingestion_not_complete", "no_text", "short_body", "high_replacement_chars"}
+BLOCKING_ISSUES = {"ingestion_not_complete", "no_text", "short_body", "high_replacement_chars", "preprocessing_error"}
 
 
 def compute_quality(raw_text, sections, body_text, ingestion_status, abstract) -> dict:
-    raw_text = raw_text or ""
+    raw_text = as_text(raw_text)
     raw_len = len(raw_text)
     replacement_ratio = raw_text.count("�") / raw_len if raw_len else 0.0
     section_types = {s["section_type"] for s in sections}

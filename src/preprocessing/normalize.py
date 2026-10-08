@@ -68,7 +68,13 @@ def tidy_whitespace(text: str) -> str:
     return text.strip()
 
 
+def as_text(value) -> str:
+    """papers with no extracted text come back from parquet as None or NaN (a float), treat those as empty"""
+    return value if isinstance(value, str) else ""
+
+
 def normalize_text(text: str | None) -> str:
+    text = as_text(text)
     if not text:
         return ""
     # NFKC folds ligatures (ﬁ -> fi), math italic letters (𝑝 -> p) and full width characters
@@ -80,6 +86,7 @@ def normalize_text(text: str | None) -> str:
 
 # abstracts come from the arxiv API, not the PDF, so they only need light cleanup
 def normalize_abstract(text: str | None) -> str:
+    text = as_text(text)
     if not text:
         return ""
     text = unicodedata.normalize("NFKC", text)

@@ -37,6 +37,19 @@ def preprocess_paper(raw_text, ingestion_status, abstract) -> dict:
     return result
 
 
+def preprocess_paper_safely(arxiv_id, raw_text, ingestion_status, abstract) -> dict:
+    """one bad paper should never stop the whole run: if anything goes wrong it's flagged and skipped"""
+    try:
+        return preprocess_paper(raw_text, ingestion_status, abstract)
+    except Exception as e:
+        print(f"preprocessing failed for {arxiv_id}: {type(e).__name__}: {e}")
+        result = {"body_text": "", "sections": [], "n_artifact_lines_removed": 0}
+        result.update(compute_quality("", [], "", ingestion_status, abstract))
+        result["quality_issues"] = result["quality_issues"] + ["preprocessing_error"]
+        result["is_usable"] = False
+        return result
+
+
 def build_report(clean: pd.DataFrame, n_input: int, n_duplicates: int) -> dict:
     section_types = Counter(s["section_type"] for secs in clean["sections"] for s in secs)
     issues = Counter(i for row in clean["quality_issues"] for i in row)
@@ -75,7 +88,7 @@ def run_preprocessing(input_path="data/papers.parquet", output_path="data/papers
     df, n_duplicates = clean_metadata(raw)
 
     processed = [
-        preprocess_paper(row.extracted_text, row.ingestion_status, row.abstract_clean)
+        preprocess_paper_safely(row.arxiv_id, row.extracted_text, row.ingestion_status, row.abstract_clean)
         for row in df.itertuples(index=False)
     ]
     clean = pd.concat([df[METADATA_COLUMNS], pd.DataFrame(processed)], axis=1)

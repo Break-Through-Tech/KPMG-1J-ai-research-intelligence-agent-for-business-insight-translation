@@ -277,3 +277,79 @@ def test_metadata_fields():
     assert row["abstract_clean"] == "An abstract."
     assert row["author_count"] == 2
     assert row["year_month"] == "2026-09"
+
+
+# ---------- papers with no text (failed downloads / extractions) ----------
+# a PDF that can't be read is saved with no text, which comes back from parquet as NaN (a float)
+# this crashed a whole GitHub run (paper 2610.04091v1, "exception stack overflow" in the PDF reader)
+
+import math
+from datetime import datetime, timezone
+
+from src.ingestion.dataset import merge_and_save
+from src.preprocessing.pipeline import run_preprocessing
+
+
+def test_normalize_handles_missing_values():
+    for missing in (None, float("nan"), pd.NA, 3.0):
+        assert normalize_text(missing) == ""
+        assert normalize_abstract(missing) == ""
+
+
+def test_quality_handles_nan_text():
+    q = compute_quality(float("nan"), [], "", "partial", "abs")
+    assert not q["is_usable"] and "no_text" in q["quality_issues"]
+
+
+def _ingested_row(arxiv_id, text, download_status, extraction_status):
+    when = datetime(2026, 10, 5, tzinfo=timezone.utc)
+    return {
+        "arxiv_id": arxiv_id, "title": f"title {arxiv_id}", "abstract": "An abstract.", "authors": ["A"],
+        "primary_category": "cs.AI", "categories": ["cs.AI"], "published": when, "updated": when,
+        "pdf_url": "", "abs_url": "", "pdf_path": "", "download_status": download_status,
+        "extracted_text": text, "extraction_status": extraction_status,
+    }
+
+
+def test_run_preprocessing_with_failed_papers_saved_through_ingestion(tmp_path):
+    # goes through the real save path so None really turns into NaN on reload
+    raw_path = str(tmp_path / "papers.parquet")
+    good_text = SAMPLE_PAPER.replace("Intro text.", "Intro text. " * 600)
+    merge_and_save(pd.DataFrame(), [
+        _ingested_row("2610.00001v1", good_text, "downloaded", "extracted"),
+        _ingested_row("2610.04091v1", None, "downloaded", "failed"),        # PDF reader crashed
+        _ingested_row("2610.00003v1", None, "failed", "not_attempted"),     # download failed
+    ], raw_path)
+    reloaded = pd.read_parquet(raw_path).set_index("arxiv_id")["extracted_text"]
+    assert isinstance(reloaded["2610.04091v1"], float) and math.isnan(reloaded["2610.04091v1"])
+
+    clean = run_preprocessing(raw_path, str(tmp_path / "clean.parquet"), str(tmp_path / "report.json"))
+    clean = clean.set_index("arxiv_id")
+    assert clean.loc["2610.00001v1", "is_usable"]
+    for broken in ("2610.04091v1", "2610.00003v1"):
+        assert not clean.loc[broken, "is_usable"]
+        assert {"ingestion_not_complete", "no_text"} <= set(clean.loc[broken, "quality_issues"])
+
+
+def test_one_paper_crashing_does_not_stop_the_run(tmp_path, monkeypatch):
+    from src.preprocessing import pipeline
+    real_split = pipeline.split_sections
+
+    def split_that_breaks_on_one_paper(text):
+        if "BREAK ME" in text:
+            raise ValueError("simulated bug")
+        return real_split(text)
+    monkeypatch.setattr(pipeline, "split_sections", split_that_breaks_on_one_paper)
+
+    raw_path = str(tmp_path / "papers.parquet")
+    good_text = SAMPLE_PAPER.replace("Intro text.", "Intro text. " * 600)
+    merge_and_save(pd.DataFrame(), [
+        _ingested_row("2610.00001v1", good_text, "downloaded", "extracted"),
+        _ingested_row("2610.00002v1", good_text + " BREAK ME", "downloaded", "extracted"),
+    ], raw_path)
+
+    clean = run_preprocessing(raw_path, str(tmp_path / "clean.parquet"), str(tmp_path / "report.json"))
+    clean = clean.set_index("arxiv_id")
+    assert clean.loc["2610.00001v1", "is_usable"]
+    assert not clean.loc["2610.00002v1", "is_usable"]
+    assert "preprocessing_error" in clean.loc["2610.00002v1", "quality_issues"]
