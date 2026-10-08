@@ -138,9 +138,14 @@ def chunk_paper(rows: list[dict], cfg: ChunkConfig = ChunkConfig()) -> list[dict
     first = rows[0]
     meta = {
         "paper_id": first["paper_id"],
+        "version": first.get("version", 1),
         "title": first["title"],
         "authors": [str(a) for a in first["authors"]],
         "arxiv_url": first["arxiv_url"],
+        # carried through so the index can filter by date and topic
+        "published_date": first.get("published_date", ""),
+        "primary_category": first.get("primary_category", ""),
+        "categories": [str(c) for c in first.get("categories", [])],
     }
 
     pieces = []  # (section row, chunk text)
