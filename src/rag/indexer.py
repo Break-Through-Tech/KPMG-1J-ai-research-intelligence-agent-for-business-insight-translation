@@ -1,18 +1,3 @@
-"""
-===============================================================================
-Indexer Module (src/rag/indexer.py)
-===============================================================================
-
-Purpose:
-  Loads pre-computed vector embeddings (.npy) and chunk metadata (.parquet) from 
-  the vectorization pipeline, cleans metadata formats, and upserts them into a 
-  persistent ChromaDB collection.
-
-Key Function:
-  - build_chroma_index(...): Processes vector files and stores embeddings.
-===============================================================================
-"""
-
 from pathlib import Path
 import chromadb
 import numpy as np
