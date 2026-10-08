@@ -1,7 +1,23 @@
+"""
+===============================================================================
+Indexer Module (src/rag/indexer.py)
+===============================================================================
+
+Purpose:
+  Loads pre-computed vector embeddings (.npy) and chunk metadata (.parquet) from 
+  the vectorization pipeline, cleans metadata formats, and upserts them into a 
+  persistent ChromaDB collection.
+
+Key Function:
+  - build_chroma_index(...): Processes vector files and stores embeddings.
+===============================================================================
+"""
+
 from pathlib import Path
 import chromadb
 import numpy as np
 import pandas as pd
+
 
 def build_chroma_index(
     embeddings_path: str = "data/vectorized/embeddings.npy",
@@ -56,6 +72,14 @@ def build_chroma_index(
             documents=documents[i:end_idx],
             metadatas=metadatas[i:end_idx]
         )
+    
+    return len(ids)
+
 
 if __name__ == "__main__":
-    build_chroma_index()
+    print("--- Testing Chroma Indexer ---")
+    try:
+        total_indexed = build_chroma_index()
+        print(f"Successfully indexed {total_indexed} items into ChromaDB.")
+    except Exception as e:
+        print(f"Error during indexing: {e}")
