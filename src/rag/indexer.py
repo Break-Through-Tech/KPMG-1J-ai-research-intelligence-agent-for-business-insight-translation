@@ -38,12 +38,21 @@ def build_chroma_index(
     for _, row in metadata_df.iterrows():
         meta_dict = {}
         for col, val in row.items():
-            if pd.isna(val):
+            # Lists/arrays (for example, authors) must be checked FIRST.
+            # pd.isna() on an array returns many True/False values at once,
+            # which crashes with "truth value of an array is ambiguous".
+            # Chroma can't store lists, so join them into one string.
+            if isinstance(val, (list, tuple, np.ndarray)):
+                meta_dict[col] = ", ".join(map(str, val))
+            # Missing values become an empty string
+            elif pd.isna(val):
                 meta_dict[col] = ""
+            # Turn numpy numbers into plain Python numbers
             elif isinstance(val, (np.integer, int)):
                 meta_dict[col] = int(val)
             elif isinstance(val, (np.floating, float)):
                 meta_dict[col] = float(val)
+            # Anything else is stored as text
             else:
                 meta_dict[col] = str(val)
         metadatas.append(meta_dict)
