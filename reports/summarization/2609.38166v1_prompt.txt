@@ -1,0 +1,156 @@
+Here are two examples of research-paper summarization:
+
+EXAMPLE QUESTION:
+Can an AI model's step-by-step reasoning be trusted?
+
+EXAMPLE RESEARCH CONTENT:
+
+Paper ID: 2609.38107v1
+Title: Correct Answers, Invalid Traces
+
+Researchers evaluated GPT-2-style models using iGSM, a synthetic
+mathematics benchmark that allows reasoning traces to be checked
+against known dependencies.
+
+On the hardest problems, 31.6% of correct answers had invalid
+reasoning traces. More than half of these invalid traces passed
+syntax and arithmetic checks but failed semantic dependency checks.
+
+Models trained on swapped traces still answered approximately
+82% of in-distribution problems correctly, despite producing
+no valid reasoning traces.
+
+
+EXAMPLE EXPECTED SUMMARY:
+
+Research Objective:
+Determine whether correct LLM answers are reliably accompanied
+by valid step-by-step reasoning traces. [2609.38107v1]
+
+Methodology:
+Researchers tested GPT-2-style models on the iGSM synthetic
+mathematics benchmark, which supports programmatic verification
+of reasoning traces. They also tested models trained with
+altered reasoning traces. [2609.38107v1]
+
+Key Findings:
+On the hardest problems, 31.6% of correct answers had invalid
+traces. Over half of these invalid traces failed semantic
+dependency checks rather than syntax or arithmetic checks.
+Models trained with swapped traces achieved approximately
+82% in-distribution accuracy despite generating no valid
+traces. [2609.38107v1]
+
+Limitations:
+The experiments used small models and synthetic mathematics
+problems. The findings do not directly establish whether
+the emitted traces represent the models' internal computations.
+[2609.38107v1]
+
+
+END EXAMPLE
+
+EXAMPLE QUESTION:
+Do AI agents actually follow their declared plans?
+
+EXAMPLE RESEARCH CONTENT:
+
+Paper ID: 2609.38108v1
+Title: Do LLM Agents Execute the Plans They Declare?
+
+Researchers introduced Planning-as-Routing, which sends tasks
+to predefined, sequential, hierarchical, or search executors.
+
+They evaluated three LLMs across four benchmarks involving
+web navigation, software engineering, and embodied tasks.
+
+Generic Plan+ReAct preserved declared planning structures
+in only 22-45% of trajectories across three benchmarks.
+
+Pattern-specific executors improved task success from 0.48
+to 0.92 on ALFWorld and from 0.36 to 0.44 on
+SWE-bench Verified.
+
+Current LLMs did not reliably choose the strongest
+planning mode for each task.
+
+
+EXAMPLE EXPECTED SUMMARY:
+
+Research Objective:
+Investigate whether AI agents execute their declared plans
+and whether different planning modes improve performance.
+[2609.38108v1]
+
+Methodology:
+Researchers compared generic Plan+ReAct with
+Planning-as-Routing using four pattern-specific executors.
+They evaluated three LLMs across four benchmarks.
+[2609.38108v1]
+
+Key Findings:
+Generic Plan+ReAct preserved declared plan structures
+in only 22-45% of trajectories across three benchmarks.
+Pattern-specific execution improved success from 0.48
+to 0.92 on ALFWorld and from 0.36 to 0.44 on
+SWE-bench Verified. [2609.38108v1]
+
+Limitations:
+The provided excerpts do not specify formal experimental
+limitations. The authors identify reliable planning-mode
+selection as an unresolved research challenge.
+[2609.38108v1]
+
+
+END EXAMPLE
+
+NOW SUMMARIZE THIS NEW RESEARCH:
+
+Research Question:
+How can long-context language models reduce memory and compute costs?
+
+Retrieved Research Content:
+[2609.38166v1] Section: ABSTRACT
+Chunk ID: 2609.38166v1::0000
+Recent LLMs increasingly adopt hybrid designs that replace standard attention with linear attention, such as Gated DeltaNet (GDN) and Kimi Delta Attention (KDA). Although they compress the context into a fixed-size recurrent state and substantially reduce the cost of long-context processing, repeatedly reading and updating that state remains a major inference bottleneck. Quantization offers a natural way to reduce this cost, but can significantly degrade model quality, due to the accumulation of rounding errors and the presence of outlier rows and columns in the state. To address these challenges, we propose LeapQuant , a training-free method that achieves near-lossless performance under 8-bit recurrent-state quantization. First, to mitigate error accumulation, we propose per-window quantization, which leaps over a window of tokens and quantizes the state only once at its end. Within a window, outputs are computed from the fixed low-bit state together with high-precision buffered updates. Second, to reduce the error introduced by each quantization, LeapQuant retains the state’s largest outliers as a few high-precision Compensator Tokens , which share the update path of real tokens. We then smooth the remaining residual before quantization to further reduce the error. Comprehensive experiments across the Qwen, Kimi, and GLM model families show that LeapQuant substantially reduces memory and compute costs during inference. With accuracy comparable to the FP32 baseline, it achieves average speedups of 2.05–3.70 × at the kernel level and 1.47 × for end-to-end inference on NVIDIA B200, RTX PRO 6000, and RTX 5090 GPUs.
+
+[2609.38166v1] Section: 1 INTRODUCTION
+Chunk ID: 2609.38166v1::0001
+Linear attention, which compresses the token history into a fixed-size recurrent state, is now widely used in long-context large language models. For instance, recent hybrid architectures in the Qwen, Kimi, and GLM model families replace many standard attention layers with recurrent linear attention layers such as Gated DeltaNet (GDN) and Kimi Delta Attention (KDA) (Qwen Team, 2025; Yang et al., 2025; Team et al., 2025). By compressing the token history, these layers reduce the computation and memory growth associated with long context, making inference more efficient. However, the recurrent state in linear attention still imposes substantial memory bandwidth and capacity costs during inference. For each generated token, a linear-attention layer loads its state matrix from HBM, applies a lightweight update, computes the token output, and writes the updated matrix back to HBM. This full-state transfer repeats at every decoding step. Since the update and readout perform little arithmetic relative to the bytes transferred, inference throughput is bottlenecked by HBM bandwidth (Williams et al., 2009). Consequently, reading and writing the recurrent states across many linear attention layers and concurrent requests accounts for a significant fraction of decoding time, as shown in Figure 1(a). Additionally, the recurrent state consumes substantial GPU memory when prefix caching is enabled, as serving systems retain separate states for each cached prefix (Figure 1(b)) (Pan et al., 2025). > ∗ Equal contribution Figure 1: Recurrent-state access is a major cost of LLM serving. (a) Decode-time breakdown for GLM-5.3-Flash-NVFP4 on the B200 GPU at batch size 256. The share spent on linear attention stays roughly constant as context length grows. (b) GPU memory footprint for Qwen3.5-9B with prefix caching, assuming one linear attention state per 1,024 cached tokens. Quantizing the recurrent state is a natural way to reduce both memory traffic and footprint, but doing so in a way that preserves model accuracy is challenging.
+
+[2609.38166v1] Section: 1 INTRODUCTION
+Chunk ID: 2609.38166v1::0002
+Quantizing the recurrent state is a natural way to reduce both memory traffic and footprint, but doing so in a way that preserves model accuracy is challenging. In particular, a naive approach that stores the state in a standard low-bit format and re-quantizes it after every token can substantially degrade accuracy, especially over long thinking traces. We find that accuracy degradation arises from two sources of error. First, quantization error accumulates recurrently: each update starts from an already quantized state, and quantizing the result introduces another rounding error, causing the state to deviate progressively from the FP32 trajectory over a long generation (Figure 3). Second, large outliers are often concentrated in a few rows and columns of the state. These outliers widen the quantization range and force smaller values onto coarse quantization levels, amplifying the error introduced each time the state is quantized. Accurate low-bit quantization therefore requires reducing both how often error is introduced and how much error each quantization introduces. We propose LeapQuant , a training-free method for recurrent-state quantization that achieves nearlossless model quality. LeapQuant introduces two key ideas that directly address the above sources of error. First, per-window quantization limits error accumulation by allowing LeapQuant to leap over a window of tokens before quantizing the state again (Figure 2). At the beginning of each window, LeapQuant stores the recurrent state in low precision. Within the window, it holds this state fixed, buffers higher-precision token updates, and computes each output from the fixed state and buffered updates. Only at the end of the window does it reconstruct and quantize the full updated state for the next window. As a result, LeapQuant introduces quantization error less frequently, slowing its accumulation over long contexts.
+
+[2609.38166v1] Section: 1 INTRODUCTION
+Chunk ID: 2609.38166v1::0003
+Only at the end of the window does it reconstruct and quantize the full updated state for the next window. As a result, LeapQuant introduces quantization error less frequently, slowing its accumulation over long contexts. To address quantization error caused by outliers, LeapQuant introduces Compensator Tokens , which capture the state’s largest outliers in high precision and thereby reduce the error of each quantization (Figure 4). Each Compensator Token represents a high-precision outer product of two vectors, capturing large-magnitude patterns across both rows and columns and leaving a residual that is easier to quantize. Since these rank-one terms have the same form as real-token updates, LeapQuant incorporates them directly into the window’s update path using only a few additional vectors and no separate recurrent state update. LeapQuant further smooths the residual across channels before quantization to reduce error. Both key techniques in LeapQuant are training-free and require no calibration data. Our evaluation spanning the Qwen, Kimi, and GLM families demonstrates that LeapQuant substantially reduces memory costs and improves inference throughput. Across 12 model–task pairs, LeapQuant achieves accuracy comparable to the FP32 baseline while reducing state memory traffic by 3.4 × and end-to-end memory footprint by up to 56%. Across NVIDIA B200, RTX PRO 6000, and RTX 5090 GPUs, LeapQuant achieves average speedups of 2.05–3.70 × at the kernel level and 1.47 × for end-to-end inference.
+
+[2609.38166v1] Section: 2 RELATED WORK
+Chunk ID: 2609.38166v1::0004
+Linear attention and hybrid models. Katharopoulos et al. (2020) propose Linear attention to replace the softmax attention (Vaswani et al., 2017) with a recurrence over a fixed-size state, and Figure 2: Per-token versus per-window quantization. Per-token quantization re-quantizes the full state after every update. Per-window quantization holds the quantized boundary state S^ˆ 0 fixed, buffers the p updates of the window in higher precision, and reconstructs the state from them; the full state is quantized only once per window, into S^ˆ p . a series of works improve its expressiveness with data-dependent gating and delta-rule updates, including GLA (Yang et al., 2023), Mamba2 (Dao & Gu, 2024), DeltaNet (Schlag et al., 2021; Yang et al., 2024), Gated DeltaNet (Yang et al., 2025), and KDA (Team et al., 2025). Their chunkwise formulation (Yang et al., 2023) materializes the state in HBM only at chunk boundaries during training and prefill, and is implemented using efficient Triton kernels (Tillet et al., 2019) in libraries such as FLA (Yang & Zhang, 2024). Recent LLMs combine a few full or sparse attention layers with a majority of linear attention layers (Qwen Team, 2025; Team et al., 2026; Z.ai, 2026; Blakeman et al., 2025), and these hybrid models have become a common design for long-context and long-reasoning workloads. These works focus on the architecture and its full-precision kernels; the storage precision of the recurrent state is not their concern. Quantization for ML models. Quantization has become a standard approach for reducing the memory requirements for LLM inference. Weight-only methods such as GPTQ (Frantar et al., 2022) and AWQ (Lin et al., 2024) compress the weights to 4 bits, and SmoothQuant (Xiao et al., 2023) further quantizes the activations by migrating their outliers into the weights. As the context grows, the KV cache becomes the dominant memory cost.
+
+[2609.38166v1] Section: 2 RELATED WORK
+Chunk ID: 2609.38166v1::0005
+As the context grows, the KV cache becomes the dominant memory cost. KIVI (Liu et al., 2024) quantizes keys per channel and values per token, KVQuant (Hooper et al., 2024) isolates outliers into a sparse full-precision component. SVDQuant (Li et al., 2024) and GEAR (Kang et al., 2024) absorb outliers into a high-precision low-rank component and quantize the residual. For state space models, Quamba (Chiang et al., 2025b) and MambaQuant (Yue et al., 2025) quantize the weights and activations, and Quamba2 (Chiang et al., 2025a) and Q-Mamba (Tianqi et al., 2025) further quantize the cached SSM state. These methods are specialized to Mamba’s selective SSM, whose state is updated differently from that of other linear attention architectures. State management in linear attention serving. Since the recurrent state is overwritten at every token, serving systems need extra mechanisms to keep or restore earlier states. ReplaySSM (Liou & Dao, 2026) supports speculative decoding by keeping the state at a checkpoint and recomputing the recent tokens for efficient rollback of the state. Per-window quantization similarly starts from a stored boundary state and replays recent updates, but uses this structure to improve quantization accuracy. Marconi (Pan et al., 2025) enables prefix caching for hybrid models by saving the states of cached prefixes as checkpoints, at the cost of a larger memory footprint.
+
+[2609.38166v1] Section: 3.1 PRELIMINARIES
+Chunk ID: 2609.38166v1::0006
+We consider one head of a linear attention model with a recurrent state matrix St ∈ R^dk×dv , query qt ∈ R^dk , and value and output vt, ot ∈ R^dv . We study recurrences whose update is a diagonal decay followed by a single rank-one delta-rule (Schlag et al., 2021) update: Here Diag( αt ) is the diagonal decay (Team et al., 2025), kt ∈ R^dk is the key vector, and βt ∈ R^dk is a read vector ( βt = 0 for models without the delta rule). Appendix A shows how other linear attention models fit this form. For state quantization, denote S^ˆ = `quant` b ( S ), where `quant` b is the b -bit quantization operator, S is the original state, and S^ˆ is its quantized representation, including scale metadata. We use St^FP32 for the independent trajectory of equation 1 without state quantization and Et = `dequant` b ( S^ˆ t ) − St^FP32 for its quantization-induced deviation, where `dequant` b is the corresponding dequantization operator. When a quantized state participates in arithmetic below, its dequantization is implicit.
+
+[2609.38166v1] Section: 3.2 PER-WINDOW QUANTIZATION
+Chunk ID: 2609.38166v1::0007
+A na ̈ıve state-quantized model quantizes and dequantizes the full state after every decode step. At step t , it first computes the full-precision updated recurrent state St from the previously quantized state S^ˆ t− 1, then quantizes the resulting new recurrent state: Because every update starts from an already quantized state, its rounding error is carried into subsequent steps and can accumulate over long contexts (Appendix B.1). Per-step quantization therefore introduces a new error at every token. Figure 3 tracks the error of the quantized state against the FP32 trajectory of Qwen3.5-9B over 64K decoded tokens. Under per-step quantization, the error grows steadily with the context length, even for BF16. Stochastic rounding helps little, as it only lowers the BF16 error at 64K by 3× and makes INT8 diverge. In contrast, quantizing only once per 16-token window, as introduced below (the -w variants), lowers the error at 64K by 100 × for BF16 and by 39 × for INT8. LeapQuant further reduces the error of each window-boundary quantization and keeps the lowest error throughout, even below per-window BF16 at half the bits. Figure 3: State MSE over 64K decoded tokens on PG-19 (Qwen3.5-9B); -w quantizes once per window. Motivated by the error growth in Figure 3, we propose per-window quantization (Figure 2). We write each update as a decay followed by a rank-one update whose correction vector ui is computed from the previous state. For every instance of equation 1, this update is described by the decay αi , the key vector ki , and the computed correction ui : We now consider a sequence of p consecutive tokens fed into the linear state. For simplicity, index them as tokens 1 , . . . , p . We keep the quantized boundary state S^ˆ 0 fixed and buffer the p tuples ( αi, ki, ui ) in higher precision. For a ≤ b , denote the cumulative decay from step a through step b by Γ a : b = Diag( αb ) Diag( αb− 1) · · · Diag( αa ), and set Γ a : b = I when a > b .
+
+
+Write a summary with exactly these four sections:
+
+Research Objective:
+Methodology:
+Key Findings:
+Limitations:
+
+Use ONLY the new retrieved research content.
+Cite its actual paper IDs.
+Do not cite or reuse findings from the two examples.
+If information is missing, state that clearly.
