@@ -21,6 +21,10 @@ def print_answer(result):
         print(f"  [{number}] {source['paper_id']}  {source['title']}")
         print(f"      {source['arxiv_url']}")
 
+    if result["truncated"]:
+        print("\nWARNING: summary was cut off (hit the token limit), "
+              "try a higher --max-tokens")
+
     check = result["citation_check"]
     if check["cited_not_retrieved"]:
         print("\nWARNING: summary cites papers that were not retrieved: "
@@ -70,13 +74,29 @@ def main():
         default=DEFAULT_MODEL
     )
 
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=4096
+    )
+
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=["low", "medium", "high"],
+        default="low"
+    )
+
     args = parser.parse_args()
 
     if not args.query and not args.benchmark:
         parser.error("give a question or --benchmark")
 
     # Check the API key before the slow retriever startup
-    llm = GroqLLM(model=args.model)
+    llm = GroqLLM(
+        model=args.model,
+        max_tokens=args.max_tokens,
+        reasoning_effort=args.reasoning_effort
+    )
 
     # Imported here because it needs chromadb and loads the embedding model
     from src.rag.combined_retriever import CombinedRetriever

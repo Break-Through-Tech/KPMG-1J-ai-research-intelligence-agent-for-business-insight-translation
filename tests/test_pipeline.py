@@ -108,6 +108,19 @@ def test_check_citations_ignores_version_differences():
     assert check["cited_not_retrieved"] == []
 
 
+def test_answer_query_flags_truncated_summary():
+    llm = FakeLLM()
+    llm.last_finish_reason = "length"
+
+    result = answer_query("Long question?", FakeRetriever(make_papers()), llm)
+    assert result["truncated"] is True
+
+    llm.last_finish_reason = "stop"
+
+    result = answer_query("Long question?", FakeRetriever(make_papers()), llm)
+    assert result["truncated"] is False
+
+
 def test_no_results_skips_llm():
     llm = FakeLLM()
 

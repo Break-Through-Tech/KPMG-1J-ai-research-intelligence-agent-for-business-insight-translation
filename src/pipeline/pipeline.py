@@ -110,6 +110,7 @@ def answer_query(query, retriever, llm, top_k=5):
             "query": query,
             "sources": [],
             "summary": NO_RESULTS_MESSAGE,
+            "truncated": False,
             "citation_check": check_citations("", [])
         }
 
@@ -122,6 +123,8 @@ def answer_query(query, retriever, llm, top_k=5):
         "query": query,
         "sources": [_source_info(paper) for paper in papers],
         "summary": summary,
+        # True when the LLM hit its token limit and the summary is cut off
+        "truncated": getattr(llm, "last_finish_reason", None) == "length",
         "citation_check": check_citations(summary, papers)
     }
 

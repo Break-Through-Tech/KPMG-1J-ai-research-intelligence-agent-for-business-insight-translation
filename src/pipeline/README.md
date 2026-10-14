@@ -54,6 +54,8 @@ python -m src.pipeline.cli --benchmark evaluation/benchmark_queries.csv \
 
 Answers are saved to `evaluation/results/end_to_end_outputs.jsonl`, one line per query. If the run stops (for example on a Groq rate limit), run the same command again and it continues from the first unanswered query.
 
+Other options: `--top-k` (papers per answer, default 5), `--max-tokens` (default 4096) and `--reasoning-effort` (`low`/`medium`/`high`, default `low`). gpt-oss-120b's hidden reasoning counts toward `--max-tokens`, so at the original 1500 most 5-paper summaries were cut off. To re-run the benchmark with new settings, pass a new `--output` file; otherwise the run skips queries that are already answered.
+
 `--papers` must be the same corpus the Chroma database was built from. `CombinedRetriever` refuses to start if they don't match.
 
 ## Output fields
@@ -63,6 +65,7 @@ Answers are saved to `evaluation/results/end_to_end_outputs.jsonl`, one line per
 | `query_id`, `category`, `expected_paper_ids` | copied from the benchmark CSV (benchmark mode only) |
 | `query` | the question |
 | `summary` | generated answer |
+| `truncated` | `true` if the LLM hit its token limit and the summary is cut off; re-run with a higher `--max-tokens` |
 | `sources` | retrieved papers: `paper_id`, `title`, `arxiv_url`, `chunk_id`, `section`, `score` |
 | `citation_check.cited` | paper IDs the summary cites (version endings removed) |
 | `citation_check.cited_not_retrieved` | should be empty; anything here is a made-up citation |

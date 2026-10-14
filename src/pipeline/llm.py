@@ -16,11 +16,18 @@ class GroqLLM:
         self,
         model=DEFAULT_MODEL,
         temperature=0.1,
-        max_tokens=1500
+        max_tokens=4096,
+        reasoning_effort="low"
     ):
         self.model = model
         self.temperature = temperature
+        # gpt-oss is a reasoning model: its hidden reasoning counts toward
+        # max_tokens, so 1500 cut off most 5-paper summaries
         self.max_tokens = max_tokens
+        self.reasoning_effort = reasoning_effort
+
+        # "length" means the response hit max_tokens and was cut off
+        self.last_finish_reason = None
 
         api_key = os.environ.get("GROQ_API_KEY")
 
@@ -47,8 +54,11 @@ class GroqLLM:
                 {"role": "user", "content": user_prompt}
             ],
             temperature=self.temperature,
-            max_completion_tokens=self.max_tokens
+            max_completion_tokens=self.max_tokens,
+            reasoning_effort=self.reasoning_effort
         )
+
+        self.last_finish_reason = response.choices[0].finish_reason
 
         text = response.choices[0].message.content
 
