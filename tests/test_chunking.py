@@ -1,18 +1,23 @@
 # unit tests for src/chunking, run from the project root with: python -m pytest tests/
 # input rows follow the format of chunk_input.jsonl from prepare_for_chunking.py
 
+import pandas as pd
+import pytest
+
 from src.chunking.chunker import ChunkConfig, chunk_paper, count_tokens, merge_short_sections, split_sentences, window_text
+from src.chunking.pipeline import validate_chunks
 
 PROSE = ("Large language models are increasingly used for business analysis. "
          "We measure how often they agree with expert analysts on 1,200 filings. "
          "Agreement was 81.4% overall, with lower scores on forward-looking statements. ")
 
-META = {"paper_id": "2609.30264v1", "title": "Agents for Insight", "authors": ["Jane Doe", "John Smith"],
-        "arxiv_url": "http://arxiv.org/abs/2609.30264v1"}
+META = {"paper_id": "2609.30264", "version": 1, "title": "Agents for Insight", "authors": ["Jane Doe", "John Smith"],
+        "arxiv_url": "http://arxiv.org/abs/2609.30264v1", "published_date": "2026-09-30",
+        "primary_category": "cs.AI", "categories": ["cs.AI", "cs.CL"]}
 
 
 def row(i, section, section_type, text, source="body"):
-    return {**META, "section_id": f"2609.30264v1_sec{i:02d}", "section": section,
+    return {**META, "section_id": f"2609.30264_sec{i:02d}", "section": section,
             "section_type": section_type, "source": source, "text": text, "est_tokens": len(text) // 4}
 
 
@@ -69,7 +74,13 @@ def test_metadata_on_every_chunk():
     for c in chunks:
         assert all(c[k] for k in ["paper_id", "title", "authors", "section", "arxiv_url", "chunk_id"])
     assert len({c["chunk_id"] for c in chunks}) == len(chunks)
-    assert chunks[1]["chunk_id"] == "2609.30264v1::0001"
+    assert chunks[1]["chunk_id"] == "2609.30264::0001"
+
+
+def test_filter_metadata_on_every_chunk():
+    for c in chunk_paper(ROWS, SMALL):
+        assert c["version"] == 1 and c["published_date"] == "2026-09-30"
+        assert c["primary_category"] == "cs.AI" and c["categories"] == ["cs.AI", "cs.CL"]
 
 
 def test_abstract_comes_first():
@@ -106,3 +117,39 @@ def test_no_headings_row_gets_a_label():
 
 def test_empty_rows_are_skipped():
     assert chunk_paper([row(0, "1 Intro", "introduction", "   ")], SMALL) == []
+
+
+def test_tokenizer_mode_fits_the_model_limit():
+    from transformers import AutoTokenizer
+    cfg = ChunkConfig(chunk_tokens=128, overlap_tokens=16, tokenizer="BAAI/bge-small-en-v1.5")
+    tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer)
+    chunks = chunk_paper(ROWS, cfg)
+    assert len(chunks) > 1
+    # the whole embedded text, with the model's special tokens, fits the limit
+    assert all(len(tokenizer(c["text_for_embedding"])["input_ids"]) <= 128 for c in chunks)
+
+
+# ---------- validate_chunks (run by the index before embedding) ----------
+
+def test_real_chunks_pass_validation():
+    validate_chunks(pd.DataFrame(chunk_paper(ROWS, ChunkConfig(chunk_tokens=60, overlap_tokens=10))))
+
+
+def test_missing_column_is_rejected():
+    chunks = pd.DataFrame(chunk_paper(ROWS, ChunkConfig())).drop(columns=["text_for_embedding"])
+    with pytest.raises(ValueError, match="text_for_embedding"):
+        validate_chunks(chunks)
+
+
+def test_duplicate_chunk_ids_are_rejected():
+    chunks = pd.DataFrame(chunk_paper(ROWS, ChunkConfig(chunk_tokens=60, overlap_tokens=10)))
+    chunks.loc[1, "chunk_id"] = chunks.loc[0, "chunk_id"]
+    with pytest.raises(ValueError, match="duplicate"):
+        validate_chunks(chunks)
+
+
+def test_empty_embedding_text_is_rejected():
+    chunks = pd.DataFrame(chunk_paper(ROWS, ChunkConfig()))
+    chunks.loc[0, "text_for_embedding"] = "   "
+    with pytest.raises(ValueError, match="empty"):
+        validate_chunks(chunks)

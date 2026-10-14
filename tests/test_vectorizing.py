@@ -1,93 +1,6 @@
 import numpy as np
-import pandas as pd
-import pytest
 
 from src.vectorizing.embedder import TextEmbedder
-from src.vectorizing.pipeline import validate_chunks
-
-
-def make_sample_chunks():
-    """
-    Small test dataset matching the real chunking output schema.
-    """
-
-    return pd.DataFrame([
-        {
-            "chunk_id": "2609.30264v1::0000",
-            "paper_id": "2609.30264v1",
-            "title": "Retrieval Augmented Generation",
-            "authors": ["Test Author"],
-            "arxiv_url": "https://arxiv.org/abs/2609.30264",
-            "section": "1 Introduction",
-            "section_type": "introduction",
-            "section_id": "section_1",
-            "source": "body",
-            "chunk_index": 0,
-            "n_chunks_in_paper": 2,
-            "text": (
-                "Retrieval augmented generation combines "
-                "information retrieval with language models."
-            ),
-            "text_for_embedding": (
-                "Retrieval Augmented Generation\n"
-                "Section: 1 Introduction\n\n"
-                "Retrieval augmented generation combines "
-                "information retrieval with language models."
-            ),
-            "n_tokens": 20
-        },
-        {
-            "chunk_id": "2609.30264v1::0001",
-            "paper_id": "2609.30264v1",
-            "title": "Retrieval Augmented Generation",
-            "authors": ["Test Author"],
-            "arxiv_url": "https://arxiv.org/abs/2609.30264",
-            "section": "2 Methods",
-            "section_type": "method",
-            "section_id": "section_2",
-            "source": "body",
-            "chunk_index": 1,
-            "n_chunks_in_paper": 2,
-            "text": (
-                "Dense embeddings represent text as vectors "
-                "for semantic retrieval."
-            ),
-            "text_for_embedding": (
-                "Retrieval Augmented Generation\n"
-                "Section: 2 Methods\n\n"
-                "Dense embeddings represent text as vectors "
-                "for semantic retrieval."
-            ),
-            "n_tokens": 18
-        }
-    ])
-
-
-def test_valid_chunk_schema():
-    chunks = make_sample_chunks()
-
-    # Should run without raising an exception
-    validate_chunks(chunks)
-
-
-def test_missing_required_column():
-    chunks = make_sample_chunks()
-
-    chunks = chunks.drop(
-        columns=["text_for_embedding"]
-    )
-
-    with pytest.raises(ValueError):
-        validate_chunks(chunks)
-
-
-def test_duplicate_chunk_ids():
-    chunks = make_sample_chunks()
-
-    chunks.loc[1, "chunk_id"] = chunks.loc[0, "chunk_id"]
-
-    with pytest.raises(ValueError):
-        validate_chunks(chunks)
 
 
 def test_document_embeddings():
@@ -167,3 +80,26 @@ def test_query_embedding():
         1.0,
         atol=1e-5
     )
+
+def test_query_instruction_only_for_bge_queries():
+    embedder = TextEmbedder()
+
+    assert embedder.query_instruction.startswith("Represent this sentence")
+
+    # the prefix changes the query vector, documents are embedded without it
+    query = "How can RAG help businesses?"
+
+    with_prefix = embedder.embed_query(query)
+    without_prefix = embedder.embed_documents([query])[0]
+
+    assert not np.allclose(with_prefix, without_prefix)
+
+
+def test_count_truncated():
+    embedder = TextEmbedder()
+
+    short_text = "A short chunk."
+    long_text = "word " * 2000
+
+    assert embedder.count_truncated([short_text]) == 0
+    assert embedder.count_truncated([short_text, long_text]) == 1

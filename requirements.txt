@@ -6,5 +6,6 @@ pymupdf4llm
 matplotlib
 pytest
 sentence-transformers
+lancedb
 chromadb
 openai

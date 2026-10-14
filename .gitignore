@@ -19,7 +19,9 @@ data/chunks.parquet
 data/chunks_test.parquet
 data/vectorized/
 data/vectorized_test/
+data/index/
+.venv/
 
-# Local Chroma vector database (rebuild with python -m src.rag.indexer)
+# Local Chroma vector database, kept only as the retriever comparison baseline
 data/chroma_db/
 data/release/
