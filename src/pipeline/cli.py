@@ -5,6 +5,10 @@
 #
 # Run every benchmark query and save the answers:
 # python -m src.pipeline.cli --benchmark evaluation/benchmark_queries.csv
+#
+# Retrievers (--retriever), both search the LanceDB index from src/indexing:
+#   lance-combined  title/abstract search + chunk search merged with RRF (default)
+#   lance           hybrid chunk search only, grouped into papers
 
 import argparse
 
@@ -65,8 +69,14 @@ def main():
     )
 
     parser.add_argument(
-        "--db-dir",
-        default="data/chroma_db"
+        "--retriever",
+        choices=["lance-combined", "lance"],
+        default="lance-combined"
+    )
+
+    parser.add_argument(
+        "--index-dir",
+        default="data/index"
     )
 
     parser.add_argument(
@@ -98,12 +108,17 @@ def main():
         reasoning_effort=args.reasoning_effort
     )
 
-    # Imported here because it needs chromadb and loads the embedding model
-    from src.rag.combined_retriever import CombinedRetriever
+    # Imported here because it needs lancedb and loads the embedding model
+    from src.rag.lance_retriever import LanceCombinedRetriever, LanceRetriever
 
-    retriever = CombinedRetriever(
+    retriever_class = (
+        LanceCombinedRetriever if args.retriever == "lance-combined"
+        else LanceRetriever
+    )
+
+    retriever = retriever_class(
         papers_path=args.papers,
-        db_dir=args.db_dir
+        index_dir=args.index_dir
     )
 
     if args.benchmark:

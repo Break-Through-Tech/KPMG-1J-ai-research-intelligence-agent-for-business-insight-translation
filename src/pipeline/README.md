@@ -4,7 +4,7 @@ Takes a question in plain English and returns a cited summary of the relevant re
 
 ```
 question
-  -> CombinedRetriever (src/rag/combined_retriever.py)    top 5 papers + best supporting chunk each
+  -> LanceCombinedRetriever (src/rag/lance_retriever.py)  top 5 papers + best supporting chunk each
   -> format_retrieved_content                             paper ID, title, abstract, section, chunk text
   -> build_summarization_prompt (src/summarization)       Lakshmee's two-shot prompt
   -> GroqLLM (openai/gpt-oss-120b)                        4-section summary with [paper_id] citations
@@ -22,17 +22,23 @@ question
 ## Setup
 
 1. Install dependencies: `pip install -r requirements.txt`
-2. Build the Chroma database (one time, about 20–40 minutes on a laptop CPU):
+2. Get the corpus and the LanceDB search index (`src/indexing`):
 
 ```bash
 mkdir -p data/release
 curl -L -o data/release/papers_clean.parquet \
   https://github.com/Break-Through-Tech/KPMG-1J-ai-research-intelligence-agent-for-business-insight-translation/releases/latest/download/papers_clean.parquet
+```
+
+If that release also lists `index.tar.gz`, download it from the same release and unpack it (`tar -xzf index.tar.gz -C data`). Otherwise build the index (one time, about 20 minutes on a laptop CPU):
+
+```bash
 python -m src.preprocessing.prepare_for_chunking data/release/papers_clean.parquet data/chunk_input.jsonl
 python -m src.chunking.cli
-python -m src.vectorizing.cli
-python -m src.rag.indexer
+python -m src.indexing.cli
 ```
+
+The index and `--papers` must come from the same release. The retriever refuses to start if the index has papers the corpus file doesn't.
 
 3. Set a Groq API key: `export GROQ_API_KEY=...` (free key at console.groq.com)
 
@@ -54,9 +60,16 @@ python -m src.pipeline.cli --benchmark evaluation/benchmark_queries.csv \
 
 Answers are saved to `evaluation/results/end_to_end_outputs.jsonl`, one line per query. If the run stops (for example on a Groq rate limit), run the same command again and it continues from the first unanswered query.
 
-Other options: `--top-k` (papers per answer, default 5), `--max-tokens` (default 4096) and `--reasoning-effort` (`low`/`medium`/`high`, default `low`). gpt-oss-120b's hidden reasoning counts toward `--max-tokens`, so at the original 1500 most 5-paper summaries were cut off. To re-run the benchmark with new settings, pass a new `--output` file; otherwise the run skips queries that are already answered.
+Retrievers (`--retriever`), both on the LanceDB index:
 
-`--papers` must be the same corpus the Chroma database was built from. `CombinedRetriever` refuses to start if they don't match.
+| Option | How it ranks papers |
+|---|---|
+| `lance-combined` (default) | Thania's CombinedRetriever method: title/abstract search and hybrid chunk search, merged with reciprocal rank fusion |
+| `lance` | Hybrid (vector + keyword) chunk search only, grouped into papers |
+
+See `evaluation/results/retriever_comparison.md` for how they compare with the earlier Chroma retriever.
+
+Other options: `--top-k` (papers per answer, default 5), `--max-tokens` (default 4096) and `--reasoning-effort` (`low`/`medium`/`high`, default `low`). gpt-oss-120b's hidden reasoning counts toward `--max-tokens`, so at the original 1500 most 5-paper summaries were cut off. To re-run the benchmark with new settings, pass a new `--output` file; otherwise the run skips queries that are already answered.
 
 ## Output fields
 
@@ -76,9 +89,9 @@ Other options: `--top-k` (papers per answer, default 5), `--max-tokens` (default
 ```python
 from src.pipeline.llm import GroqLLM
 from src.pipeline.pipeline import answer_query
-from src.rag.combined_retriever import CombinedRetriever
+from src.rag.lance_retriever import LanceCombinedRetriever
 
-retriever = CombinedRetriever(papers_path="data/release/papers_clean.parquet")
+retriever = LanceCombinedRetriever(papers_path="data/release/papers_clean.parquet")
 llm = GroqLLM()
 
 result = answer_query("How can companies check AI models for bias?", retriever, llm)
