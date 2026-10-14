@@ -34,6 +34,7 @@ python -m pytest tests/
 | `--chunk-tokens` | 512 | max chunk size |
 | `--overlap-tokens` | 64 | overlap between neighbouring chunks |
 | `--min-section-tokens` | 30 | shorter sections are merged into the next one |
+| `--tokenizer` | `BAAI/bge-small-en-v1.5` | count tokens with this model's tokenizer (must match the embedding model); `none` uses the characters / 4 estimate |
 
 ## what's kept and what's removed
 
@@ -46,7 +47,7 @@ Baseline: fixed-size chunks with overlap, with two rules on top.
 1. **A chunk never crosses a section boundary.** Each section row is chunked on its own, so every chunk has exactly one section to cite. Sections under 30 tokens (often a heading with one sentence) are merged into the next section of the same paper.
 2. **Chunks are built from whole sentences.** Sentences are added until the next one would go over 512 tokens. The overlap is the last ~64 tokens' worth of whole sentences from the previous chunk. A sentence only gets split if it alone is bigger than a chunk (usually a large table). Table rows and list items are kept as separate units.
 
-Token counts use the same estimate as preprocessing (characters / 4). Once we pick an embedding model, we should switch to its tokenizer.
+Token counts come from the embedding model's tokenizer (`--tokenizer`), and the 512 limit covers the whole embedded text: title + section prefix + chunk + the model's 2 special tokens. With the old characters / 4 estimate, 15.9% of chunks were longer than bge's 512-token limit and got cut off when embedded (math, tables and citations produce far more tokens than the estimate); with the tokenizer, none are. Counting is cached per word, which gives exactly the same counts for bert-style tokenizers like bge and keeps a full corpus run to about a minute. Changing `--tokenizer` or the sizes changes the chunk settings recorded in the index, so the index then needs `python -m src.indexing.cli --rebuild`.
 
 ## output schema (`data/chunks.parquet`)
 

@@ -1,5 +1,7 @@
 # Vectorization / Embedding Pipeline
 
+> **Update:** the index (`src/indexing`) now does the embedding itself, using `TextEmbedder` and `validate_chunks` from this directory, and only embeds new or changed papers. To build or update the searchable index, run `python -m src.indexing.cli` (see `src/indexing/README.md`). `python -m src.vectorizing.cli` still works for one-off analysis, but its `embeddings.npy` output isn't used by the pipeline.
+
 ## Overview
 
 This directory contains the **vectorization stage** of the RAG (Retrieval-Augmented Generation) pipeline.
