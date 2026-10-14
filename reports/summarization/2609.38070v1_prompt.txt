@@ -1,0 +1,156 @@
+Here are two examples of research-paper summarization:
+
+EXAMPLE QUESTION:
+Can an AI model's step-by-step reasoning be trusted?
+
+EXAMPLE RESEARCH CONTENT:
+
+Paper ID: 2609.38107v1
+Title: Correct Answers, Invalid Traces
+
+Researchers evaluated GPT-2-style models using iGSM, a synthetic
+mathematics benchmark that allows reasoning traces to be checked
+against known dependencies.
+
+On the hardest problems, 31.6% of correct answers had invalid
+reasoning traces. More than half of these invalid traces passed
+syntax and arithmetic checks but failed semantic dependency checks.
+
+Models trained on swapped traces still answered approximately
+82% of in-distribution problems correctly, despite producing
+no valid reasoning traces.
+
+
+EXAMPLE EXPECTED SUMMARY:
+
+Research Objective:
+Determine whether correct LLM answers are reliably accompanied
+by valid step-by-step reasoning traces. [2609.38107v1]
+
+Methodology:
+Researchers tested GPT-2-style models on the iGSM synthetic
+mathematics benchmark, which supports programmatic verification
+of reasoning traces. They also tested models trained with
+altered reasoning traces. [2609.38107v1]
+
+Key Findings:
+On the hardest problems, 31.6% of correct answers had invalid
+traces. Over half of these invalid traces failed semantic
+dependency checks rather than syntax or arithmetic checks.
+Models trained with swapped traces achieved approximately
+82% in-distribution accuracy despite generating no valid
+traces. [2609.38107v1]
+
+Limitations:
+The experiments used small models and synthetic mathematics
+problems. The findings do not directly establish whether
+the emitted traces represent the models' internal computations.
+[2609.38107v1]
+
+
+END EXAMPLE
+
+EXAMPLE QUESTION:
+Do AI agents actually follow their declared plans?
+
+EXAMPLE RESEARCH CONTENT:
+
+Paper ID: 2609.38108v1
+Title: Do LLM Agents Execute the Plans They Declare?
+
+Researchers introduced Planning-as-Routing, which sends tasks
+to predefined, sequential, hierarchical, or search executors.
+
+They evaluated three LLMs across four benchmarks involving
+web navigation, software engineering, and embodied tasks.
+
+Generic Plan+ReAct preserved declared planning structures
+in only 22-45% of trajectories across three benchmarks.
+
+Pattern-specific executors improved task success from 0.48
+to 0.92 on ALFWorld and from 0.36 to 0.44 on
+SWE-bench Verified.
+
+Current LLMs did not reliably choose the strongest
+planning mode for each task.
+
+
+EXAMPLE EXPECTED SUMMARY:
+
+Research Objective:
+Investigate whether AI agents execute their declared plans
+and whether different planning modes improve performance.
+[2609.38108v1]
+
+Methodology:
+Researchers compared generic Plan+ReAct with
+Planning-as-Routing using four pattern-specific executors.
+They evaluated three LLMs across four benchmarks.
+[2609.38108v1]
+
+Key Findings:
+Generic Plan+ReAct preserved declared plan structures
+in only 22-45% of trajectories across three benchmarks.
+Pattern-specific execution improved success from 0.48
+to 0.92 on ALFWorld and from 0.36 to 0.44 on
+SWE-bench Verified. [2609.38108v1]
+
+Limitations:
+The provided excerpts do not specify formal experimental
+limitations. The authors identify reliable planning-mode
+selection as an unresolved research challenge.
+[2609.38108v1]
+
+
+END EXAMPLE
+
+NOW SUMMARIZE THIS NEW RESEARCH:
+
+Research Question:
+How can an AI model estimate uncertainty in its own answers?
+
+Retrieved Research Content:
+[2609.38070v1] Section: ABSTRACT
+Chunk ID: 2609.38070v1::0000
+As the chain-of-thought reasoning capabilities of large language models improve, evaluating and calibrating their reasoning confidence is becoming increasingly important for quantifying the uncertainty of their answers. Current methods for estimating the confidence of large language models are generally based on probabilities of selected key tokens, but the underlying mechanism remains unclear. Our pilot study finds that replacing selected token probabilities with coarse substitutes can also improve calibration, motivating us to further explore effective signals of model confidence. We introduce Divergent Token Confidence (DTC), a framework that estimates confidence by counting tokens at which two models strongly disagree during decoding. DTC identifies these divergent tokens using the Jensen–Shannon divergence between next-token distributions evaluated along the same reasoning trajectory. We find that their count is almost negatively associated with answer accuracy, thereby can serve as a simple yet effective signal for uncertainty quantification. DTC supports both white-box and black-box evaluation using auxiliary models, without explicit training and affecting the generation process. Experiments across multiple model families and six mathematical benchmarks demonstrate improved calibration over the considered probabilitybased and verbalized-based baselines. Under white-box evaluation, the countonly estimator achieves an average expected calibration error of 13.0%, compared with 32.7%–42.4% for standard full-sequence confidence methods. In black-box settings, it also improves calibration over the original verbalized scores. For example, mean expected calibration error falls from 32.1%–40.2% to 13.7%–16.3% on DeepSeek-V3.2. These findings provide new insights for improving reasoning uncertainty quantification in large language models. The code is released at https://github.com/szu-tera/DTC.git.
+
+[2609.38070v1] Section: 1 INTRODUCTION
+Chunk ID: 2609.38070v1::0001
+Large language models have shown strong capability to solve complex tasks through Chain-ofThought (CoT) reasoning (Wei et al., 2022; OpenAI, 2024; Guo et al., 2025). However, a reasoning trajectory that yields a correct answer may still contain unreliable intermediate decisions, while one that yields an incorrect answer may still be logically reliable (Wei et al., 2022; Bao et al., 2025; Zhou et al., 2026). Therefore, estimating the confidence of a model’s reasoning trajectory is becoming increasingly important. First, a mismatch between model confidence and its answers can amplify the model’s unreliability, thereby limiting its deployment in safety-critical scenarios (Clusmann et al., 2023). Second, understanding reasoning confidence can help us determine whether we need to rely on the outputs of models. When a reasoning path is identified as unreliable, the model can abstain from answering (Madhusudhan et al., 2025), or it can be deferred to human review (Devic et al., > *Equal contribution. > †Corresponding author. Figure 1: Divergent-token selection and its relationship to path accuracy. (a) A generator produces a reasoning trajectory. (b) A token is selected when the JSD between two models’ next-token distributions exceeds θ . (c) Path accuracy decreases as the number of divergent tokens increases under single- and dual-auxiliary probing. 2025). Finally, it has been shown that confidence itself can also be leveraged to improve the model’s own reasoning performance (Fu et al., 2026). We refer to this confidence estimation task as Reasoning Uncertainty Quantification : assigning a confidence score to each query and its reasoning path to reflect the reliability of the path and its final answer (Liu et al., 2025; Zhang & Zhang, 2025). Existing methods typically aggregate token probabilities over the entire trajectory, but the resulting scores can be overconfident (Orgad et al., 2025; Li et al., 2025; Zhang & Zhang, 2025).
+
+[2609.38070v1] Section: 1 INTRODUCTION
+Chunk ID: 2609.38070v1::0002
+Existing methods typically aggregate token probabilities over the entire trajectory, but the resulting scores can be overconfident (Orgad et al., 2025; Li et al., 2025; Zhang & Zhang, 2025). To mitigate this overconfidence, Li et al. (2025) propose Uncertainty Quantification with Attention Chain (UQAC), which selects answer-related CoT tokens and multiplies their probabilities to obtain a path-level confidence score. This design suggests that the probabilities of answer-related tokens provide useful information for estimating confidence in answer correctness. However, its product score depends jointly on these probabilities and the selected-token count, leaving it unclear whether the calibration gains come from the selected probabilities or the count. To test whether the selected probabilities are necessary for these calibration gains, we keep UQAC’s selected token set fixed and replace the selected probabilities with either the trajectory’s mean token probability or a constant shared across trajectories from the same model on a given dataset. Both replacements generally improve calibration in our case study, suggesting that the selected tokens’ specific probabilities may not be necessary for these gains. In particular, replacing the probabilities with a shared constant makes the score depend only on the number of selected tokens, motivating us to examine token count as a calibration signal (Section 3.3). To obtain the token count signal that reflects reasoning path reliability, we draw on inter-model disagreement as an uncertainty signal (Kruse et al., 2025; Sun et al., 2024). We hypothesize that unreliable reasoning paths contain more tokens at which models strongly disagree . We measure token-level disagreement using the Jensen–Shannon divergence (JSD) between two models’ nexttoken distributions and define tokens whose divergence exceeds a threshold θ as divergent tokens.
+
+[2609.38070v1] Section: 1 INTRODUCTION
+Chunk ID: 2609.38070v1::0003
+We measure token-level disagreement using the Jensen–Shannon divergence (JSD) between two models’ nexttoken distributions and define tokens whose divergence exceeds a threshold θ as divergent tokens. Their count summarizes the frequency of strong disagreement along the reasoning path and is negatively associated with path accuracy in our experiments (Figure 1). We therefore introduce Divergent Token Confidence (DTC) , which converts divergent-token count into path-level confidence. DTC provides two estimators: DTClin maps the count directly to confidence, while DTCprod combines the count with a full-sequence probability score. The same procedure can be applied in white-box settings using the generator’s information and in black-box settings using auxiliary models on the generated trajectory, without requiring access to the generator’s logits. Across multiple model families and mathematical benchmarks, DTC improves calibration over full-sequence likelihood-based, verbalized-confidence, and UQAC baselines (Sections 5.1 and 5.2). DTC also reduces overconfidence in verbalized scores on existing trajectories (Section 6).
+
+[2609.38070v1] Section: 2 RELATED WORK
+Chunk ID: 2609.38070v1::0004
+Probability-based confidence and verbalized confidence. In white-box uncertainty quantification, token probabilities or predictive uncertainty from the generating model are commonly used to construct response-level confidence scores. Sequence-level uncertainty estimators typically aggregate token-level signals over a generated response (Malinin & Gales, 2021). Relevance-aware methods account for differences in how tokens contribute to meaning or the final answer, weighting these signals by token relevance, sentence relevance, or contextual information (Duan et al., 2024; Bakman et al., 2024; Lin et al., 2024). For responses that include CoT reasoning, CoT-UQ and UQAC further use the relevance of tokens in the reasoning chain to the final answer to estimate response-level uncertainty (Zhang & Zhang, 2025; Li et al., 2025). In black-box settings, verbalized confidence is a common approach to confidence estimation (Wang & Zhang, 2026). Such methods either elicit confidence through additional prompts after a response has been generated or ask the model to report confidence or a distribution over candidate answers alongside its CoT and final answer (Tian et al., 2023; Wang et al., 2025). The latter couples reasoning with confidence elicitation: the choice of prompt may alter the CoT trajectory and lead to lower accuracy or overconfidence in mathematical reasoning (Wang et al., 2025). Our work reveals their limitations and investigates the novel divergent-token count as a confidence signal in both white-box and black-box settings. Cross-model signals for confidence estimation. Another line of work uses multiple models, base models, or model perturbations to estimate the reliability of generated responses. MUSE and CrossCheckGPT use multi-model consensus or cross-system consistency to improve confidence estimation (Kruse et al., 2025; Sun et al., 2024). BaseCal uses signals from base models to calibrate the confidence of post-trained models (Tan et al., 2026).
+
+[2609.38070v1] Section: 2 RELATED WORK
+Chunk ID: 2609.38070v1::0005
+MUSE and CrossCheckGPT use multi-model consensus or cross-system consistency to improve confidence estimation (Kruse et al., 2025; Sun et al., 2024). BaseCal uses signals from base models to calibrate the confidence of post-trained models (Tan et al., 2026). More closely related to our work are methods that estimate reasoning uncertainty from token entropy. Some aggregate the generating model’s token entropy along a CoT trajectory; others use randomly perturbed models or additional models and aggregate their token entropy along the same trajectory to estimate uncertainty over the reasoning trajectory (Zhang et al., 2026; Gorbett & Jana, 2026). These studies primarily focus on responselevel uncertainty or its ranking performance, whereas our focus is on a bounded score that can be directly interpreted as confidence and used for calibration.
+
+[2609.38070v1] Section: 3.1 REASONING UNCERTAINTY AND CALIBRATION
+Chunk ID: 2609.38070v1::0006
+The prediction uncertainty (or query uncertainty) U ( x ) characterizes uncertainty over answers to a query x before conditioning on a particular realized reasoning path, and is often estimated by sampling multiple answers to the same query (Kuhn et al., 2023). In this work, we study reasoning uncertainty U ( x, r ), the uncertainty in final-answer reliability conditioned on both the query x and the realized reasoning process r (Liu et al., 2025; Zhang & Zhang, 2025). Given the query x , a generating model G produces a trajectory τ = ( τ 1 , . . . , τT ) of T tokens, consisting of a CoT path r and a final answer y ; a reference answer or evaluator provides the binary correctness label z ∈{ 0 , 1 } . We operationalize U ( x, r ) through a calibrated confidence C ( y, x, r ) ∈ [0 , 1] that estimates P ( z =1 | x, r, y ), with higher confidence indicating lower reasoning uncertainty. Uncertainty is perfectly calibrated if Expected calibration error (ECE; Guo et al., 2017) is used to quantify the degree of miscalibration: we partitions N scored trajectories into M equal-width confidence bins {B 1 , . . . , BM } and then calculates the absolute gap between average accuracy acc( Bm ) and confidence conf( Bm ): Lower ECE indicates better calibration. Unless noted, we report ECE with M =20.
+
+[2609.38070v1] Section: 3.2 SEQUENCE CONFIDENCE FROM TOKEN PROBABILITIES
+Chunk ID: 2609.38070v1::0007
+Standard full-sequence confidence scores aggregate token probabilities over the entire trajectory. One such score is the length-normalized sequence likelihood (NSL; Malinin & Gales, 2021). Given the generator’s token probabilities pt = PG ( τt | x, τ<t ), we have Another similar full-sequence confidence score is the mean token probability (Orgad et al., 2025), denoted as C mean = T^1 Tt =1^pt, which could be overconfident (Zhang & Zhang, 2025). Recent work argue that not every token is equally diagnostic of answer correctness and accordingly assigns each token a relevance weight wt to form a relevance-weighted score (Bakman et al., 2024) Closest to our setting, UQAC instantiates this idea on CoT r through hard selection. It constructs an attention chain r attn by backtracking from y with attention weights, optionally refining the chain by similarity to the answer. Let S denote the selected-token set induced by this chain (typically including answer tokens) and S = |S| its size. In the generic formulation above, this hard selection corresponds to wt = 1 {t ∈S} . The primary score is the unnormalized product Although UQAC is effective to a certain extent, the product depends jointly on these probabilities and the number of selected-token |S| . This makes it unclear whether the probability is truly effective, and the impact of the number of selected tokens is also unclear. Therefore, the calibration source needs further investigation and we are motivated to test whether the specific selected-token probabilities are truly necessary for calibration gains and to explore better calibration signals.
+
+
+Write a summary with exactly these four sections:
+
+Research Objective:
+Methodology:
+Key Findings:
+Limitations:
+
+Use ONLY the new retrieved research content.
+Cite its actual paper IDs.
+Do not cite or reuse findings from the two examples.
+If information is missing, state that clearly.
