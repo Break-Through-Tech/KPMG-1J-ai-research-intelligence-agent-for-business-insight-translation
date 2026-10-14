@@ -19,7 +19,7 @@ papers_clean.parquet ──► prepare_for_chunking.py ──► chunk_input.jso
 From the project root:
 
 ```bash
-python prepare_for_chunking.py data/papers_clean.parquet data/chunk_input.jsonl
+python -m src.preprocessing.prepare_for_chunking   # data/papers_clean.parquet -> data/chunk_input.jsonl
 python -m src.chunking.cli
 python -m pytest tests/
 ```
@@ -52,8 +52,10 @@ Token counts use the same estimate as preprocessing (characters / 4). Once we pi
 
 | column | description |
 |---|---|
-| `chunk_id` | `2609.30264v1::0003`, paper id + position in the paper |
-| `paper_id`, `title`, `authors`, `arxiv_url` | paper metadata, from `chunk_input.jsonl` |
+| `chunk_id` | `2609.30264::0003`, paper id + position in the paper |
+| `paper_id`, `version` | arXiv id without the version (`2609.30264`) and the version number, so a v2 replaces v1 instead of sitting next to it |
+| `title`, `authors`, `arxiv_url` | paper metadata, from `chunk_input.jsonl` |
+| `published_date`, `primary_category`, `categories` | for filtering by date and topic at retrieval time |
 | `section`, `section_type`, `section_id` | `3.2 Threat Model`, `method`, and the section row it came from |
 | `source` | `body`, `body_text` (paper had no headings), or `abstract_clean` |
 | `chunk_index`, `n_chunks_in_paper` | position of the chunk in the paper |
@@ -77,5 +79,5 @@ Published release with 1,200 papers (Sept 29 – Oct 2, 2026), 1,197 usable.
 ## open questions
 
 - **Chunk size.** 512 tokens with 64 overlap is a common starting point. We should compare it with larger chunks (the preprocessing EDA assumed 800) on the benchmark questions.
-- **Paper ids include the version.** `chunk_input.jsonl` uses `2609.30264v1`, so if a paper gets a v2, its chunks get new ids and the old ones should be removed from the index.
+- **Paper ids include the version.** Fixed: `paper_id` is now the id without the version, with `version` as its own column. `prepare_for_chunking --append` replaces an older version's rows instead of adding next to them.
 - **Math.** Some equations come through PDF extraction as scrambled text. That's an extraction issue, not a chunking one, but those chunks won't retrieve well.

@@ -14,7 +14,10 @@ from .embedder import DEFAULT_MODEL, TextEmbedder
 REQUIRED_COLUMNS = [
     "chunk_id",
     "paper_id",
+    "version",
     "title",
+    "published_date",
+    "primary_category",
     "section",
     "text",
     "text_for_embedding"
@@ -121,6 +124,16 @@ def run_vectorizing(
         batch_size=batch_size
     )
 
+    # The model silently drops anything past max_seq_length,
+    # so report how often that happens.
+    n_truncated = embedder.count_truncated(texts)
+
+    if n_truncated:
+        print(
+            f"Warning: {n_truncated:,} chunks are longer than "
+            f"{embedder.model.max_seq_length} tokens and will be truncated"
+        )
+
     print(f"Embedding {len(texts):,} chunks")
 
     embeddings = embedder.embed_documents(texts)
@@ -176,6 +189,9 @@ def run_vectorizing(
         "chunks_embedded": int(len(chunks)),
         "embedding_dimension": int(embeddings.shape[1]),
         "embedding_dtype": str(embeddings.dtype),
+        "max_seq_length": int(embedder.model.max_seq_length),
+        "chunks_truncated": int(n_truncated),
+        "query_instruction": embedder.query_instruction,
         "normalized": True,
         "mean_vector_norm": float(norms.mean()),
         "min_vector_norm": float(norms.min()),
