@@ -14,7 +14,7 @@ papers_clean.parquet ──► prepare_for_chunking ──► chunk_input.jsonl 
 - `cli.py`: build, update or search from the command line
 - `tests/test_indexing.py`: unit tests (reopening, no re-embedding, version replacement, filters, hybrid search, settings check)
 
-It reuses `TextEmbedder` and `validate_chunks` from `src/vectorizing`.
+Embedding happens here, there is no separate vectorizing step. It uses `TextEmbedder` from `src/vectorizing/embedder.py` and `validate_chunks` from `src/chunking/pipeline.py`. Before changing the index, `update_index` reports chunks longer than the model's token limit and stops if the embeddings have the wrong count or contain NaN/infinite values, so a bad batch never replaces good rows.
 
 ## how to run
 
