@@ -1,7 +1,11 @@
 # unit tests for src/chunking, run from the project root with: python -m pytest tests/
 # input rows follow the format of chunk_input.jsonl from prepare_for_chunking.py
 
+import pandas as pd
+import pytest
+
 from src.chunking.chunker import ChunkConfig, chunk_paper, count_tokens, merge_short_sections, split_sentences, window_text
+from src.chunking.pipeline import validate_chunks
 
 PROSE = ("Large language models are increasingly used for business analysis. "
          "We measure how often they agree with expert analysts on 1,200 filings. "
@@ -123,3 +127,29 @@ def test_tokenizer_mode_fits_the_model_limit():
     assert len(chunks) > 1
     # the whole embedded text, with the model's special tokens, fits the limit
     assert all(len(tokenizer(c["text_for_embedding"])["input_ids"]) <= 128 for c in chunks)
+
+
+# ---------- validate_chunks (run by the index before embedding) ----------
+
+def test_real_chunks_pass_validation():
+    validate_chunks(pd.DataFrame(chunk_paper(ROWS, ChunkConfig(chunk_tokens=60, overlap_tokens=10))))
+
+
+def test_missing_column_is_rejected():
+    chunks = pd.DataFrame(chunk_paper(ROWS, ChunkConfig())).drop(columns=["text_for_embedding"])
+    with pytest.raises(ValueError, match="text_for_embedding"):
+        validate_chunks(chunks)
+
+
+def test_duplicate_chunk_ids_are_rejected():
+    chunks = pd.DataFrame(chunk_paper(ROWS, ChunkConfig(chunk_tokens=60, overlap_tokens=10)))
+    chunks.loc[1, "chunk_id"] = chunks.loc[0, "chunk_id"]
+    with pytest.raises(ValueError, match="duplicate"):
+        validate_chunks(chunks)
+
+
+def test_empty_embedding_text_is_rejected():
+    chunks = pd.DataFrame(chunk_paper(ROWS, ChunkConfig()))
+    chunks.loc[0, "text_for_embedding"] = "   "
+    with pytest.raises(ValueError, match="empty"):
+        validate_chunks(chunks)

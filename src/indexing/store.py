@@ -3,10 +3,11 @@
 # data/chunks.parquet -> data/index/ (LanceDB table "chunks" + index_manifest.json)
 
 import lancedb
+import numpy as np
 import pyarrow as pa
 from lancedb.index import FTS
 
-from ..vectorizing.pipeline import validate_chunks
+from ..chunking.pipeline import validate_chunks
 from .manifest import check_compatible, load_manifest, save_manifest
 
 TABLE_NAME = "chunks"
@@ -88,7 +89,18 @@ def update_index(table, chunks, embedder, index_dir) -> int:
 
     new = chunks[chunks["paper_id"].isin(todo)].reset_index(drop=True)
     print(f"embedding {len(new):,} chunks from {len(todo):,} new or updated papers")
-    vectors = embedder.embed_documents(new["text_for_embedding"].astype(str).tolist())
+    texts = new["text_for_embedding"].astype(str).tolist()
+    # the model silently drops tokens past max_seq_length; chunking with --tokenizer should keep this at 0
+    n_truncated = embedder.count_truncated(texts)
+    if n_truncated:
+        print(f"warning: {n_truncated:,} chunks are longer than {embedder.model.max_seq_length} tokens "
+              f"and will be cut off when embedded")
+    vectors = embedder.embed_documents(texts)
+    # checked before anything is deleted, so a bad batch never replaces good rows
+    if len(vectors) != len(new):
+        raise RuntimeError(f"got {len(vectors)} embeddings for {len(new)} chunks")
+    if not np.isfinite(vectors).all():
+        raise RuntimeError("embeddings contain NaN or infinite values")
 
     rows = new[METADATA_COLUMNS].copy()
     rows["vector"] = list(vectors)

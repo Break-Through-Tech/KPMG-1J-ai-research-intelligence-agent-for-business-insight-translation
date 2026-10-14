@@ -8,6 +8,28 @@ import pandas as pd
 
 from .chunker import ChunkConfig, chunk_paper
 
+# columns the index needs from chunks.parquet
+REQUIRED_COLUMNS = ["chunk_id", "paper_id", "version", "title", "published_date",
+                    "primary_category", "section", "text", "text_for_embedding"]
+
+
+def validate_chunks(chunks: pd.DataFrame):
+    """raises ValueError if chunks.parquet can't be embedded and indexed as is"""
+    missing = [c for c in REQUIRED_COLUMNS if c not in chunks.columns]
+    if missing:
+        raise ValueError(f"Missing required columns: {', '.join(missing)}")
+    if len(chunks) == 0:
+        raise ValueError("No chunks found in input file")
+    if chunks["chunk_id"].isna().any():
+        raise ValueError("Some chunks are missing chunk_id")
+    if chunks["chunk_id"].duplicated().any():
+        raise ValueError(f"Found {int(chunks['chunk_id'].duplicated().sum())} duplicate chunk IDs")
+    if chunks["text_for_embedding"].isna().any():
+        raise ValueError("Some chunks are missing text_for_embedding")
+    empty = chunks["text_for_embedding"].astype(str).str.strip().eq("")
+    if empty.any():
+        raise ValueError(f"Found {int(empty.sum())} empty texts for embedding")
+
 
 def load_section_rows(path) -> list[dict]:
     with open(path) as f:

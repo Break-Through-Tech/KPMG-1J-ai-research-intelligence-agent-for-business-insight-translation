@@ -111,3 +111,15 @@ def test_empty_index_with_old_settings_is_not_blocked(tmp_path, embedder):
     update_index(table, ALL, embedder, tmp_path)
     assert table.count_rows() == 3
     assert load_manifest(tmp_path)["chunk_config"] == {"chunk_tokens": 512}
+
+
+def test_bad_embeddings_never_replace_indexed_rows(index, embedder, monkeypatch):
+    table, index_dir = index
+    real_embed = embedder.embed_documents
+    monkeypatch.setattr(embedder, "embed_documents", lambda texts: real_embed(texts) * float("nan"))
+    with pytest.raises(RuntimeError, match="NaN"):
+        update_index(table, make_chunks("2609.00001", version=2, text="new text"), embedder, index_dir)
+    # the v1 row is still there, so the next good run just retries the update
+    assert table.count_rows() == 3
+    assert search(table, embedder, "financial filings", k=1)[0]["paper_id"] == "2609.00001"
+
