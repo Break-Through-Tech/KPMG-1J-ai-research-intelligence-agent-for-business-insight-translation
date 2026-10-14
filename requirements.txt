@@ -6,3 +6,5 @@ pymupdf4llm
 matplotlib
 pytest
 sentence-transformers
+chromadb
+openai

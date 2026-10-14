@@ -19,3 +19,7 @@ data/chunks.parquet
 data/chunks_test.parquet
 data/vectorized/
 data/vectorized_test/
+
+# Local Chroma vector database (rebuild with python -m src.rag.indexer)
+data/chroma_db/
+data/release/
