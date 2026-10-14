@@ -115,8 +115,7 @@ def update_index(table, chunks, embedder, index_dir) -> int:
     })
     return len(rows)
 
-def search(table, embedder, query, k=10, where=None, hybrid=True) -> list[dict]:
-    #top k chunks for a natural language query
+def search(table, embedder, query, k=10, where=None, hybrid=True, max_per_paper=1) -> list[dict]:
     vector = embedder.embed_query(query)
     if hybrid:
         q = table.search(query_type="hybrid").vector(vector).text(query)
@@ -124,7 +123,19 @@ def search(table, embedder, query, k=10, where=None, hybrid=True) -> list[dict]:
         q = table.search(vector)
     q = q.distance_type(METRIC)
     if where:
-        q = q.where(where, prefilter=True)  # filter first, then rank, so we still get k results
-    return q.limit(k).to_list()
+        q = q.where(where, prefilter=True)
+        
+    # fetch more candidates than k so deduplication still yields k results
+    raw = q.limit(k * 5).to_list()
 
-    
+    seen_papers = {}
+    deduplicated = []
+    for row in raw:
+        pid = row["paper_id"]
+        count = seen_papers.get(pid, 0)
+        if count < max_per_paper:
+            deduplicated.append(row)
+            seen_papers[pid] = count + 1
+        if len(deduplicated) == k:
+            break
+    return deduplicated
