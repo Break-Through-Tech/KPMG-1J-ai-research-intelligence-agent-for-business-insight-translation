@@ -1,0 +1,165 @@
+query_id,paper_id,title,relevance_label,source_method
+Q01,2609.36828v1,Calibrate the Decisions That Change the Future: On-Policy Post-Training Quantization for Multimodal Large Language Models,1.0,baseline
+Q01,2609.38574v1,"Towards Model as a Library: Offline, Community-Sourced AI for Low-Resource African Languages",1.0,combined
+Q01,2609.40121v1,On the (In)effectiveness of AMR Augmentation for Large Language Models,1.0,baseline
+Q01,2610.00673v1,Closing the Loop: Practical Training Recipes for Looped Language Models,1.0,baseline
+Q01,2610.01428v1,"Generalization Is Stability, Not Accuracy: Multi-Axis Evaluation of LLMs",1.0,baseline
+Q01,2610.02695v1,Test-time Calibration Learning for Large Language Model Reasoning,2.0,baseline
+Q02,2609.37172v2,SimpleEvol: An Agent-Loop Framework for LLM-Driven Automated Heuristic Design with Minimal Human Priors,0.0,baseline
+Q02,2609.38445v1,AIM: Agentic Idea Management for Automated Research,0.0,baseline
+Q02,2609.39392v1,Experimental Experience Modeling for Autonomous Research,0.0,baseline
+Q02,2609.39714v1,ArchitectureIQ: On the Measure of Training Intuition,1.0,combined
+Q02,2610.01618v1,"Agents Are Systems, Not Models: Rethinking Agentic Evaluation",1.0,baseline
+Q02,2610.02523v1,Hypothesis-guided discovery of cognitive algorithms via program refinement,0.0,combined
+Q02,2610.02826v1,Scaling Trajectories for Complex Tasks through Recursive Self-Rewrite,0.0,baseline
+Q03,2609.36700v1,Lost in Conversation or Lost in Translation? Diagnosing Multi-Turn Degradation in RAG,2.0,combined
+Q03,2609.37911v1,Generated Query Expansion Still Helps Strong Sparse Retrieval: A Controlled Study with SPLADE-v3,1.0,combined
+Q03,2609.38473v1,Re-ranking and Late Interaction Drive Retrieval Quality: A Controlled Comparison of RAG Strategies for Scientific Question Answering,2.0,baseline
+Q03,2609.38684v1,"Concept-Grounded Attention: A Controlled Evaluation of Graph-Injected Attention, Temporal Versioning, and Epistemic Status",2.0,chunks_100
+Q03,2610.01871v1,Walking the Embedding Space: Datastore Extraction from Multimodal RAG,1.0,baseline
+Q03,2610.01936v1,"Mapping the RAG Landscape: A Four Axis Taxonomy of Efficiency, Defense, Interactivity, and Reasoning",2.0,baseline
+Q03,2610.02438v1,Are you Synthesizing or Recalling? Evaluating LLMs on Algorithmic Code Retrieval,0.0,baseline
+Q03,2610.02542v1,How To Train Your World Model: Fine-tuning vs RAG for LM-based World Modeling,2.0,combined
+Q04,2609.38516v2,From Solo to Social Learning: Characterizing Recursive Social Improvement in LLMs,0.0,baseline
+Q04,2609.38788v1,"Positive Ratings, Hidden Concerns: Employee Voice Disclosure in AI-Mediated Organizational Listening",2.0,baseline
+Q04,2609.39325v1,WorkGenesis: Building the Worlds That Teach Agents to Work,1.0,combined
+Q04,2610.01222v1,"Reputation, Strategy, and Emotion Effects on Generative AI Cooperation: A Comparison Across Reasoning and Non-Reasoning Models",0.0,baseline
+Q04,2610.01262v1,Feedback Without the Wait: Piloting a Generative AI Practice Platform in a Large Maths Class,1.0,baseline
+Q04,2610.02631v1,Designing the Future of User Feedback for Generative AI,1.0,baseline
+Q05,2609.36630v1,"Distilling Agentic Systems: A Roadmap across Models, Artifacts, and Harnesses",1.0,baseline
+Q05,2609.37658v2,EnterpriseBench: Benchmarking LLM Agents on Enterprise-Level Strategic Reasoning and Decision-Making,2.0,combined
+Q05,2609.38445v1,AIM: Agentic Idea Management for Automated Research,1.0,baseline
+Q05,2609.38652v1,AgBench: Agentic AI Benchmarks for Personal AI Devices,2.0,baseline
+Q05,2609.39325v1,WorkGenesis: Building the Worlds That Teach Agents to Work,2.0,baseline
+Q05,2610.01026v1,It Takes Workflows to Evolve Better Workflows,2.0,baseline
+Q05,2610.01833v1,Continuous Process-Level Evaluation for Evolving Enterprise AI Agent Skills,2.0,combined
+Q06,2609.37658v2,EnterpriseBench: Benchmarking LLM Agents on Enterprise-Level Strategic Reasoning and Decision-Making,2.0,baseline
+Q06,2610.00912v1,OR for AI That Does OR: Routing LLMs up the Escalator inside the OSCAR Framework,2.0,combined
+Q06,2610.01222v1,"Reputation, Strategy, and Emotion Effects on Generative AI Cooperation: A Comparison Across Reasoning and Non-Reasoning Models",0.0,baseline
+Q06,2610.01231v1,Judgement in the Age of Jev: From Evaluation Scarcity to Evaluation Abundance,2.0,baseline
+Q06,2610.01833v1,Continuous Process-Level Evaluation for Evolving Enterprise AI Agent Skills,1.0,baseline
+Q06,2610.02014v1,Atoms to Processes: The Role of Artificial Intelligence and Machine Learning in Chemical Engineering,0.0,baseline
+Q06,2610.02631v1,Designing the Future of User Feedback for Generative AI,1.0,combined
+Q07,2609.36611v1,Multi-Channel Mitigation of Source-Trust Shortcuts in Fact-Checking RL Agents,2.0,combined
+Q07,2609.37216v1,CRJudgeBench: Can AI Detect Plausible but Invalid Code Reviews?,2.0,baseline
+Q07,2609.37544v2,How Can Recommendation Feedback Evolve Agent Memory?,0.0,baseline
+Q07,2609.38788v1,"Positive Ratings, Hidden Concerns: Employee Voice Disclosure in AI-Mediated Organizational Listening",0.0,combined
+Q07,2610.01262v1,Feedback Without the Wait: Piloting a Generative AI Practice Platform in a Large Maths Class,0.0,baseline
+Q07,2610.02557v1,How to Have a Sensitive Debate: An Instance-Optimal Protocol for AI Debate,1.0,baseline
+Q07,2610.02631v1,Designing the Future of User Feedback for Generative AI,1.0,baseline
+Q08,2609.38427v1,Policy-Conditioned AI-Use Detection: An Evidentiary Framework for Academic Publishing,0.0,baseline
+Q08,2609.39518v1,Referential Uncertainty in Human--AI Collaboration,0.0,baseline
+Q08,2610.02281v1,The AI Risk Observatory: What Can We Learn from AI Disclosures in Annual Reports About Societal Resilience?,0.0,baseline
+Q08,2610.02418v1,Mitigating Private Data Leakage in LLMs with Whiteout,0.0,baseline
+Q08,2610.02631v1,Designing the Future of User Feedback for Generative AI,1.0,baseline
+Q09,2609.37000v1,Cross-Organizational SysML Model Integration: A Survey of Challenges and AI-Supported Tasks,1.0,combined
+Q09,2609.38516v2,From Solo to Social Learning: Characterizing Recursive Social Improvement in LLMs,0.0,baseline
+Q09,2610.00529v1,Ontology-Based Contextual AI Evaluations (OB-CAIE) Methodology,1.0,baseline
+Q09,2610.00654v1,When More Data Is Not Enough: The Context-Sufficiency Frontier in Generative AI Personalization,2.0,combined
+Q09,2610.01231v1,Judgement in the Age of Jev: From Evaluation Scarcity to Evaluation Abundance,2.0,combined
+Q09,2610.01262v1,Feedback Without the Wait: Piloting a Generative AI Practice Platform in a Large Maths Class,1.0,baseline
+Q09,2610.02631v1,Designing the Future of User Feedback for Generative AI,2.0,baseline
+Q09,2610.02828v1,FSPO: Policy-Consistent Risk and Pareto-Feasible Control for Budgeted LLM RL Post-Training,0.0,baseline
+Q10,2609.36777v1,Code4Scene: Benchmarking Coding Agents for Constructing and Editing 3D Scenes,0.0,baseline
+Q10,2609.38043v1,UserProxyBench: Evaluating LLM User Simulators for Agent Benchmarks and Training,2.0,baseline
+Q10,2609.38652v1,AgBench: Agentic AI Benchmarks for Personal AI Devices,0.0,baseline
+Q10,2610.00583v1,Worse Together: How Performance Breaks Down in Multi-User Multi-Agent Teams,0.0,combined
+Q10,2610.00651v1,Agent Evaluation Reliability: More Tasks Won't (Always) Fix An Agent Leaderboard,1.0,combined
+Q10,2610.01618v1,"Agents Are Systems, Not Models: Rethinking Agentic Evaluation",1.0,baseline
+Q10,2610.02563v1,OpenGameEval: Benchmarking Agentic Programming and Exploration in a Stateful Game Engine,0.0,baseline
+Q11,2609.36641v1,Inducing Process Supervision from Outcome-Only Reinforcement Learning,1.0,baseline
+Q11,2609.37203v1,"Learning to Prove, Not Just to Answer: Reinforcement Learning from Formal Verification for Natural-Language Logical Reasoning",1.0,baseline
+Q11,2609.38107v1,"Correct Answers, Invalid Traces: What Verifiable Grade-School Math Reveals About Chain-of-Thought Traces",2.0,baseline
+Q11,2610.00601v1,When Reasoning Helps Action: Monitoring and Steering Chain-of-Thought in Vision-Language-Action Policies,1.0,baseline
+Q11,2610.02557v1,How to Have a Sensitive Debate: An Instance-Optimal Protocol for AI Debate,1.0,combined
+Q11,2610.02588v1,Open-Endedness Bench: Measuring Epistemic Process from Agent Records,1.0,baseline
+Q12,2609.38108v1,Do LLM Agents Execute the Plans They Declare? From Planning-Mode Declaration to Pattern-Specific Execution,2.0,baseline
+Q12,2609.38753v1,Where the Evidence Lives: Auditing AI Companions' Self-Descriptions,1.0,baseline
+Q12,2609.38891v1,Consistent Plan-Act for Long-Horizon Agentic Tasks,2.0,combined
+Q12,2610.00347v1,"Authorization for Self-Modifying AI Agent Populations: Conserving Authority across Replacement, Forking, and Rollback",0.0,baseline
+Q12,2610.00797v1,Sapien: A Stateful Policy Engine for Autonomous AI Agents,1.0,baseline
+Q12,2610.00980v1,Can AI Scientists Coordinate at Runtime?,0.0,baseline
+Q13,2609.38036v2,Gender bias across LLMs is common and highly heterogeneous,2.0,baseline
+Q13,2609.38260v1,ContextAdapt: Evaluating Contextual Adaptation and Value Alignment in LLMs,0.0,combined
+Q13,2609.39483v1,Who Owns That? Evaluating Ownership Intuitions in Large Language Models,0.0,baseline
+Q13,2610.00369v1,"A Shared Taste for Model-Written Text: The Generator-by-Selector Matrices of ""AI-AI Bias"" Show No Detectable Own-Model Premium",1.0,baseline
+Q13,2610.01222v1,"Reputation, Strategy, and Emotion Effects on Generative AI Cooperation: A Comparison Across Reasoning and Non-Reasoning Models",0.0,baseline
+Q13,2610.02631v1,Designing the Future of User Feedback for Generative AI,0.0,baseline
+Q14,2609.38797v1,Evaluating Persistent Calibration under Evolving Model Knowledge,2.0,baseline
+Q14,2609.39518v1,Referential Uncertainty in Human--AI Collaboration,0.0,baseline
+Q14,2610.00912v1,OR for AI That Does OR: Routing LLMs up the Escalator inside the OSCAR Framework,0.0,baseline
+Q14,2610.01006v1,Beyond Answer Confidence: A Controlled Audit of Self-Knowledge in a Black-Box Decision Model,2.0,baseline
+Q14,2610.01833v1,Continuous Process-Level Evaluation for Evolving Enterprise AI Agent Skills,0.0,baseline
+Q14,2610.02492v1,"Right Order, Wrong Scale: Auditing LLM Judges for Occupational AI Measurement",1.0,combined
+Q15,2609.36935v2,CoEM: Empowering Long-Context Reasoning with Commit-on-Evidence Memory,1.0,baseline
+Q15,2609.37311v2,ReMem: Rethinking Perception and Memory in Long-Context Recommendation Agents,0.0,baseline
+Q15,2609.37988v2,KV-Kaizen: Learning Context-Adaptive Cache Compression Choices,2.0,combined
+Q15,2609.38261v1,NinaXander: Feasibility and Limits of Composing Frozen Language Models Across Architecture Families via a Shared Latent Space,0.0,baseline
+Q15,2609.39358v1,Working Around the Compute Ceiling: Byte-Exact Memory in Galahad Makes LLM Reading a One-Time Cost LLM Reading a One-Time Cost,2.0,combined
+Q15,2610.00872v1,MemFit: Efficient Long-Term Agentic Memory,1.0,baseline
+Q15,2610.02687v1,Decoupling Memory from Context: Structured Memory for Token-Efficient Test-Time Continual Learning,1.0,baseline
+Q16,2609.38962v1,Alleviating Hallucination in Reasoning Tasks with Training-Free Uncertainty-Guided Steering,2.0,baseline
+Q16,2609.39182v1,"MEND: Label-Free Detection, Localisation, and Correction of Latent Hallucination in World Models",1.0,baseline
+Q16,2609.39229v1,RAIM: Robust Aggregation of Inexpensive Models for Hallucination Detection,2.0,baseline
+Q16,2610.02066v1,External Observers May See More Clearly: Cross-Model Span-Level Hallucination Detection in Large Language Models via Hidden State Probing,2.0,baseline
+Q16,2610.02887v1,Revealing Epistemic Uncertainty in MLLMs via Causal-Invariant Masking,2.0,baseline
+Q16,2610.02976v1,Relevant Evidence Decoding for Audio-Visual Hallucination Mitigation,1.0,combined
+Q17,2609.38652v1,AgBench: Agentic AI Benchmarks for Personal AI Devices,2.0,baseline
+Q17,2610.00651v1,Agent Evaluation Reliability: More Tasks Won't (Always) Fix An Agent Leaderboard,2.0,baseline
+Q17,2610.01618v1,"Agents Are Systems, Not Models: Rethinking Agentic Evaluation",2.0,baseline
+Q17,2610.01833v1,Continuous Process-Level Evaluation for Evolving Enterprise AI Agent Skills,2.0,baseline
+Q17,2610.02588v1,Open-Endedness Bench: Measuring Epistemic Process from Agent Records,2.0,baseline
+Q18,2609.37061v1,A Comprehensive View of Fairness through Distributional Stability,2.0,baseline
+Q18,2609.38427v1,Policy-Conditioned AI-Use Detection: An Evidentiary Framework for Academic Publishing,1.0,combined
+Q18,2609.39877v1,Algorithmic Recourse Under Competition,1.0,baseline
+Q18,2609.40034v1,Efficient Active Auditing of Multi-Group Fairness with Bias Probes,2.0,baseline
+Q18,2610.01282v1,Trustworthy Data- and ML-Ops for Intelligent Transportation Systems and Logistics,0.0,baseline
+Q18,2610.02557v1,How to Have a Sensitive Debate: An Instance-Optimal Protocol for AI Debate,0.0,baseline
+Q19,2609.37402v1,Routing Should Pay for Itself: Sparse Supervision for Economical LLM Routing,2.0,combined
+Q19,2609.38521v1,ShamAN-Q: Shampoo Augmented NanoQuant for Sub-1-bit LLM Weights,2.0,baseline
+Q19,2609.39001v1,"The Invisible Language Tax: Token Premiums of French and Regional Languages in 2026 LLM Tokenizers, and a French-Optimized Prototype",2.0,baseline
+Q19,2609.40121v1,On the (In)effectiveness of AMR Augmentation for Large Language Models,0.0,baseline
+Q19,2609.40286v1,Linguistic Loopholes in LLM Unlearning: From a 174-Language Benchmark to Coverage-Aware Unlearning,1.0,combined
+Q19,2610.00416v1,Benchmarking Prompt Optimization of Large Language Models With Chess,0.0,baseline
+Q19,2610.00673v1,Closing the Loop: Practical Training Recipes for Looped Language Models,1.0,baseline
+Q19,2610.02491v1,What Does a Token Cost? A Mixture-of-Agents Measurement of Sufficient Per-Token Compute,2.0,combined
+Q20,2609.36544v1,DraftTrace: A Multi-View Analytics Environment for AI-Integrated Writing,0.0,baseline
+Q20,2609.36739v1,"Frontier Autolab: Organizational Memory, Adversarial Dissent and Temporal Leakage in Multi-Agent LLM Firms Across Fifty Years of Technological Change",1.0,baseline
+Q20,2609.38788v1,"Positive Ratings, Hidden Concerns: Employee Voice Disclosure in AI-Mediated Organizational Listening",1.0,combined
+Q20,2609.39906v1,Understanding Parents' Complex Views of AI for Children's Pretend Play,0.0,baseline
+Q20,2610.01282v1,Trustworthy Data- and ML-Ops for Intelligent Transportation Systems and Logistics,2.0,combined
+Q20,2610.01436v1,A Deterministic and Auditable AI Security Risk Assessment Framework with ATLAS Aligned Executable Rules and Formal Verification,2.0,baseline
+Q20,2610.02281v1,The AI Risk Observatory: What Can We Learn from AI Disclosures in Annual Reports About Societal Resilience?,2.0,baseline
+Q21,2609.37658v2,EnterpriseBench: Benchmarking LLM Agents on Enterprise-Level Strategic Reasoning and Decision-Making,2.0,baseline
+Q21,2610.01231v1,Judgement in the Age of Jev: From Evaluation Scarcity to Evaluation Abundance,1.0,baseline
+Q21,2610.01436v1,A Deterministic and Auditable AI Security Risk Assessment Framework with ATLAS Aligned Executable Rules and Formal Verification,1.0,combined
+Q21,2610.01539v1,The AI Assessment Sandbox Configurator: A Framework to Support Technical Assessment in AI Regulatory Sandboxes,2.0,baseline
+Q21,2610.01833v1,Continuous Process-Level Evaluation for Evolving Enterprise AI Agent Skills,2.0,baseline
+Q21,2610.02503v1,Compound AI System Reliability: A Failure Taxonomy and Resilience Pattern Catalog from 150 Production Incidents,2.0,baseline
+Q22,2609.36739v1,"Frontier Autolab: Organizational Memory, Adversarial Dissent and Temporal Leakage in Multi-Agent LLM Firms Across Fifty Years of Technological Change",0.0,baseline
+Q22,2610.01231v1,Judgement in the Age of Jev: From Evaluation Scarcity to Evaluation Abundance,1.0,baseline
+Q22,2610.01282v1,Trustworthy Data- and ML-Ops for Intelligent Transportation Systems and Logistics,1.0,baseline
+Q22,2610.01833v1,Continuous Process-Level Evaluation for Evolving Enterprise AI Agent Skills,1.0,baseline
+Q22,2610.02014v1,Atoms to Processes: The Role of Artificial Intelligence and Machine Learning in Chemical Engineering,0.0,baseline
+Q22,2610.02281v1,The AI Risk Observatory: What Can We Learn from AI Disclosures in Annual Reports About Societal Resilience?,0.0,combined
+Q23,2609.36739v1,"Frontier Autolab: Organizational Memory, Adversarial Dissent and Temporal Leakage in Multi-Agent LLM Firms Across Fifty Years of Technological Change",1.0,baseline
+Q23,2609.38411v1,A Competing-Hazards Systematization of Loss of Control in Autonomous Agents,2.0,combined
+Q23,2609.38445v1,AIM: Agentic Idea Management for Automated Research,0.0,baseline
+Q23,2610.00347v1,"Authorization for Self-Modifying AI Agent Populations: Conserving Authority across Replacement, Forking, and Rollback",2.0,baseline
+Q23,2610.01539v1,The AI Assessment Sandbox Configurator: A Framework to Support Technical Assessment in AI Regulatory Sandboxes,1.0,combined
+Q23,2610.01716v1,Architecture Without an Architect? Global Governance of Artificial Intelligence in a Divided World,1.0,baseline
+Q23,2610.02281v1,The AI Risk Observatory: What Can We Learn from AI Disclosures in Annual Reports About Societal Resilience?,1.0,baseline
+Q24,2609.36481v1,Human-AI Collaboration: From Paradoxes to Patterns,2.0,baseline
+Q24,2609.37109v1,Designing a Boundary Negotiating Artifact for Collaborative Socio-Technical Sense-Making in AI Regulatory Sandboxes,1.0,baseline
+Q24,2610.00347v1,"Authorization for Self-Modifying AI Agent Populations: Conserving Authority across Replacement, Forking, and Rollback",2.0,baseline
+Q24,2610.01539v1,The AI Assessment Sandbox Configurator: A Framework to Support Technical Assessment in AI Regulatory Sandboxes,1.0,combined
+Q24,2610.01716v1,Architecture Without an Architect? Global Governance of Artificial Intelligence in a Divided World,1.0,baseline
+Q24,2610.02631v1,Designing the Future of User Feedback for Generative AI,1.0,baseline
+Q25,2609.36599v1,Scaling Video Generation for Reasoning: At What Cost?,2.0,combined
+Q25,2609.36958v1,VStress: Correlation-Aware Auditing and Adaptive Budget Allocation for Repeated Verifiers,1.0,baseline
+Q25,2609.37029v1,LongSpark: Efficient speculative decoding with a fixed-cost parallel drafter,1.0,baseline
+Q25,2610.00654v1,When More Data Is Not Enough: The Context-Sufficiency Frontier in Generative AI Personalization,0.0,baseline
+Q25,2610.01231v1,Judgement in the Age of Jev: From Evaluation Scarcity to Evaluation Abundance,1.0,baseline
+Q25,2610.01619v1,Exposing the Cost of Deep Learning Audio Development,1.0,combined
+Q25,2610.02631v1,Designing the Future of User Feedback for Generative AI,1.0,combined
+Q25,2610.02828v1,FSPO: Policy-Consistent Risk and Pareto-Feasible Control for Budgeted LLM RL Post-Training,0.0,baseline
