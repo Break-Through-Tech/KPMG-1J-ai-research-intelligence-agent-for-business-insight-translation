@@ -88,7 +88,7 @@ def main():
 
     parser.add_argument(
         "--model",
-        help="defaults to openai/gpt-oss-120b on groq, gemini-2.5-flash on gemini"
+        help="defaults to openai/gpt-oss-120b on groq, gemini-3.8-flash on gemini"
     )
 
     parser.add_argument(

@@ -18,7 +18,7 @@ PROVIDERS = {
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "key_variable": "GEMINI_API_KEY",
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
     },
 }
 
@@ -46,7 +46,7 @@ class LLM:
         self.provider = provider
         self.model = model or settings["model"]
         self.temperature = temperature
-        # gpt-oss and Gemini 2.5 are reasoning models: their hidden reasoning
+        # gpt-oss and Gemini are reasoning models: their hidden reasoning
         # counts toward max_tokens, so 1500 cut off most 5-paper summaries
         self.max_tokens = max_tokens
         self.reasoning_effort = reasoning_effort
