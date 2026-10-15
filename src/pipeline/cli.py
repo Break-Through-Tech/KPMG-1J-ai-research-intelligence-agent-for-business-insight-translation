@@ -12,7 +12,7 @@
 
 import argparse
 
-from .llm import DEFAULT_MODEL, GroqLLM
+from .llm import DEFAULT_PROVIDER, LLM, PROVIDERS
 from .pipeline import answer_query, run_benchmark
 
 
@@ -80,8 +80,15 @@ def main():
     )
 
     parser.add_argument(
+        "--provider",
+        choices=list(PROVIDERS),
+        default=DEFAULT_PROVIDER,
+        help="LLM service: groq (GROQ_API_KEY) or gemini (GEMINI_API_KEY)"
+    )
+
+    parser.add_argument(
         "--model",
-        default=DEFAULT_MODEL
+        help="defaults to openai/gpt-oss-120b on groq, gemini-2.5-flash on gemini"
     )
 
     parser.add_argument(
@@ -102,7 +109,8 @@ def main():
         parser.error("give a question or --benchmark")
 
     # Check the API key before the slow retriever startup
-    llm = GroqLLM(
+    llm = LLM(
+        provider=args.provider,
         model=args.model,
         max_tokens=args.max_tokens,
         reasoning_effort=args.reasoning_effort

@@ -7,7 +7,7 @@ question
   -> LanceCombinedRetriever (src/rag/lance_retriever.py)  top 5 papers + best supporting chunk each
   -> format_retrieved_content                             paper ID, title, abstract, section, chunk text
   -> build_summarization_prompt (src/summarization)       Lakshmee's two-shot prompt
-  -> GroqLLM (openai/gpt-oss-120b)                        4-section summary with [paper_id] citations
+  -> LLM (Groq openai/gpt-oss-120b, or Gemini)            4-section summary with [paper_id] citations
   -> check_citations                                      flags cited papers that were never retrieved
 ```
 
@@ -16,7 +16,7 @@ question
 | File | Purpose |
 |---|---|
 | `pipeline.py` | `answer_query()`, `run_benchmark()`, formatting and citation check |
-| `llm.py` | `GroqLLM`, same model and settings as the summarization testing |
+| `llm.py` | `LLM` client for Groq (default, same model and settings as the summarization testing) or Gemini |
 | `cli.py` | command line entry point |
 
 ## Setup
@@ -40,7 +40,9 @@ python -m src.indexing.cli
 
 The index and `--papers` must come from the same release. The retriever refuses to start if the index has papers the corpus file doesn't.
 
-3. Set a Groq API key: `export GROQ_API_KEY=...` (free key at console.groq.com)
+3. Set an API key, either:
+   - Groq (default): `export GROQ_API_KEY=...`, free key at console.groq.com
+   - Gemini: `export GEMINI_API_KEY=...`, free key at aistudio.google.com, then add `--provider gemini` to the commands below. Answers from a different model aren't directly comparable with the Groq benchmark runs, so save them to their own `--output` file.
 
 ## Run
 
@@ -87,12 +89,12 @@ Other options: `--top-k` (papers per answer, default 5), `--max-tokens` (default
 ## Using it from code
 
 ```python
-from src.pipeline.llm import GroqLLM
+from src.pipeline.llm import LLM
 from src.pipeline.pipeline import answer_query
 from src.rag.lance_retriever import LanceCombinedRetriever
 
 retriever = LanceCombinedRetriever(papers_path="data/release/papers_clean.parquet")
-llm = GroqLLM()
+llm = LLM()  # or LLM(provider="gemini")
 
 result = answer_query("How can companies check AI models for bias?", retriever, llm)
 print(result["summary"])
