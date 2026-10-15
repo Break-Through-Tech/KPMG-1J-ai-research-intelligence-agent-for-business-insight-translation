@@ -7,3 +7,5 @@ matplotlib
 pytest
 sentence-transformers
 lancedb
+chromadb
+openai

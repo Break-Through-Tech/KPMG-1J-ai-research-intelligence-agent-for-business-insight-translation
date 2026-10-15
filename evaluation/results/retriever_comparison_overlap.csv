@@ -1,0 +1,4 @@
+method_a,method_b,mean_jaccard
+chroma-combined,lance,0.2788018433179723
+chroma-combined,lance-combined,0.6340245775729647
+lance,lance-combined,0.39336917562724016
