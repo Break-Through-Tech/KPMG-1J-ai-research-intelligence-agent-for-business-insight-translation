@@ -62,6 +62,8 @@ python -m src.pipeline.cli --benchmark evaluation/benchmark_queries.csv \
 
 Answers are saved to `evaluation/results/end_to_end_outputs.jsonl`, one line per query. If the run stops (for example on a Groq rate limit), run the same command again and it continues from the first unanswered query.
 
+Rate limits: free tiers limit requests or tokens per minute (Gemini's free tier allows 5 requests a minute), so when a request is rate limited the pipeline waits as long as the provider asks and retries, up to `--max-retries` times (default 5). A **daily** limit stops the run with a message instead, because waiting minutes won't help; rerun later, use another key, or switch `--provider`. To avoid hitting the per-minute limit at all, add a pause between questions, e.g. `--delay 13` for Gemini's 5 requests a minute.
+
 Retrievers (`--retriever`), both on the LanceDB index:
 
 | Option | How it ranks papers |

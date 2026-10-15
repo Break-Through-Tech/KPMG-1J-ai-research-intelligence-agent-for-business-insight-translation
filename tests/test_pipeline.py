@@ -151,3 +151,124 @@ def test_run_benchmark_writes_one_line_per_query_and_resumes(tmp_path):
     # Running again skips queries that are already answered
     assert run_benchmark(benchmark, output, FakeRetriever(make_papers()), llm) == 0
     assert len(llm.calls) == 2
+
+
+# ---------- rate limits ----------
+
+import httpx
+import openai
+import pytest
+
+from src.pipeline.llm import LLM, retry_wait_seconds
+
+GROQ_PER_MINUTE = (
+    "Rate limit reached for model `openai/gpt-oss-120b` on tokens per minute (TPM): "
+    "Limit 8000, Used 6000, Requested 5000. Please try again in 1m2.5s."
+)
+GROQ_PER_DAY = (
+    "Rate limit reached for model `openai/gpt-oss-120b` on tokens per day (TPD): "
+    "Limit 200000, Used 198628, Requested 4998. Please try again in 9m48s."
+)
+GEMINI_PER_MINUTE = (
+    "Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, "
+    "quotaId: GenerateRequestsPerMinutePerProjectPerModel-FreeTier, 'retryDelay': '34s'"
+)
+
+
+def rate_limit_error(message, headers=None):
+    request = httpx.Request("POST", "https://example.com/chat/completions")
+    response = httpx.Response(429, request=request, headers=headers or {})
+    return openai.RateLimitError(message, response=response, body=None)
+
+
+class FlakyCompletions:
+    """Raises the given errors in order, then returns a normal response."""
+
+    def __init__(self, errors):
+        self.errors = list(errors)
+        self.calls = 0
+
+    def create(self, **kwargs):
+        self.calls += 1
+        if self.errors:
+            raise self.errors.pop(0)
+        message = type("Message", (), {"content": "Summary [2609.38107v1]"})
+        choice = type("Choice", (), {"message": message, "finish_reason": "stop"})
+        return type("Response", (), {"choices": [choice]})
+
+
+def make_llm(monkeypatch, errors, max_retries=5):
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    waits = []
+    llm = LLM(max_retries=max_retries, sleep=waits.append)
+    completions = FlakyCompletions(errors)
+    llm.client = type("Client", (), {"chat": type("Chat", (), {"completions": completions})})
+    return llm, completions, waits
+
+
+def test_wait_time_comes_from_header_then_message_then_backoff():
+    assert retry_wait_seconds(rate_limit_error("slow down", {"retry-after": "7"}), 0) == 7
+    assert retry_wait_seconds(rate_limit_error(GROQ_PER_MINUTE), 0) == 62.5
+    assert retry_wait_seconds(rate_limit_error(GEMINI_PER_MINUTE), 0) == 34
+    assert retry_wait_seconds(rate_limit_error("slow down"), 2) == 60
+
+
+def test_per_minute_limit_waits_and_retries(monkeypatch):
+    llm, completions, waits = make_llm(monkeypatch, [rate_limit_error(GEMINI_PER_MINUTE)])
+
+    assert llm.generate("system", "user") == "Summary [2609.38107v1]"
+    assert completions.calls == 2
+    assert waits == [35]
+
+
+def test_daily_limit_stops_without_waiting(monkeypatch):
+    llm, completions, waits = make_llm(monkeypatch, [rate_limit_error(GROQ_PER_DAY)])
+
+    with pytest.raises(RuntimeError, match="daily groq limit"):
+        llm.generate("system", "user")
+
+    assert completions.calls == 1
+    assert waits == []
+
+
+def test_gives_up_after_max_retries(monkeypatch):
+    errors = [rate_limit_error("slow down") for _ in range(3)]
+    llm, completions, waits = make_llm(monkeypatch, errors, max_retries=2)
+
+    with pytest.raises(openai.RateLimitError):
+        llm.generate("system", "user")
+
+    assert completions.calls == 3
+    assert len(waits) == 2
+
+
+def test_run_benchmark_pauses_between_queries_only(tmp_path):
+    benchmark = tmp_path / "queries.csv"
+    pd.DataFrame([
+        {"query_id": f"Q0{i}", "category": "general", "query": f"Question {i}?", "expected_paper_ids": None}
+        for i in range(1, 4)
+    ]).to_csv(benchmark, index=False)
+
+    pauses = []
+    run_benchmark(benchmark, tmp_path / "out.jsonl", FakeRetriever(make_papers()), FakeLLM(),
+                  delay=10, sleep=pauses.append)
+
+    assert pauses == [10, 10]
+
+
+GEMINI_REAL_ERROR = (
+    "Error code: 429 - [{'error': {'code': 429, 'message': 'You exceeded your current quota, please check "
+    "your plan and billing details. \\n* Quota exceeded for metric: "
+    "generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 5, model: gemini-3.8-flash"
+    "\\nPlease retry in 13.364181756s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': "
+    "'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaId': "
+    "'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaValue': '5'}]}, "
+    "{'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '13s'}]}}]"
+)
+
+
+def test_real_gemini_per_minute_error_is_retried(monkeypatch):
+    llm, completions, waits = make_llm(monkeypatch, [rate_limit_error(GEMINI_REAL_ERROR)])
+
+    assert llm.generate("system", "user") == "Summary [2609.38107v1]"
+    assert waits == [pytest.approx(14.364181756)]

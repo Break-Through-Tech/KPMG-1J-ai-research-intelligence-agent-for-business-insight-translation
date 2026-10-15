@@ -98,6 +98,20 @@ def main():
     )
 
     parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=5,
+        help="times to wait and retry a rate limited request"
+    )
+
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=0,
+        help="seconds to pause between benchmark questions"
+    )
+
+    parser.add_argument(
         "--reasoning-effort",
         choices=["low", "medium", "high"],
         default="low"
@@ -113,7 +127,8 @@ def main():
         provider=args.provider,
         model=args.model,
         max_tokens=args.max_tokens,
-        reasoning_effort=args.reasoning_effort
+        reasoning_effort=args.reasoning_effort,
+        max_retries=args.max_retries
     )
 
     # Imported here because it needs lancedb and loads the embedding model
@@ -135,7 +150,8 @@ def main():
             args.output,
             retriever,
             llm,
-            top_k=args.top_k
+            top_k=args.top_k,
+            delay=args.delay
         )
     else:
         print_answer(answer_query(args.query, retriever, llm, top_k=args.top_k))

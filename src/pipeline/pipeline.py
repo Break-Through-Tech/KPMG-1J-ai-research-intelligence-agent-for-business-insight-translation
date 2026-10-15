@@ -3,6 +3,7 @@
 
 import json
 import re
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -129,11 +130,13 @@ def answer_query(query, retriever, llm, top_k=5):
     }
 
 
-def run_benchmark(benchmark_path, output_path, retriever, llm, top_k=5):
+def run_benchmark(benchmark_path, output_path, retriever, llm, top_k=5,
+                  delay=0, sleep=time.sleep):
     """
     Answer every benchmark query and write one JSON line per query.
     Queries already in the output file are skipped, so a failed run
     (e.g. a rate limit) can be restarted without redoing finished work.
+    delay: seconds to pause between queries, for low per-minute limits.
     """
 
     queries = pd.read_csv(benchmark_path)
@@ -155,6 +158,9 @@ def run_benchmark(benchmark_path, output_path, retriever, llm, top_k=5):
         for _, row in queries.iterrows():
             if row["query_id"] in done:
                 continue
+
+            if written and delay:
+                sleep(delay)
 
             print(f"Answering {row['query_id']}: {row['query']}")
 
