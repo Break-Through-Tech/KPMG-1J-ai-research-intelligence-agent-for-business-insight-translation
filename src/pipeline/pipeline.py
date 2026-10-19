@@ -1,5 +1,6 @@
 # End-to-end pipeline:
 # user query -> CombinedRetriever (top papers + evidence) -> summarization prompt -> LLM -> cited answer
+#            -> business translation prompt (src/translation) -> LLM -> business brief
 
 import json
 import re
@@ -11,6 +12,11 @@ import pandas as pd
 from src.summarization.prompts import (
     SUMMARIZATION_SYSTEM_PROMPT,
     build_summarization_prompt
+)
+from src.translation.prompts import (
+    BUSINESS_SYSTEM_PROMPT,
+    DEFAULT_AUDIENCE,
+    build_business_prompt
 )
 
 
@@ -91,9 +97,37 @@ def _source_info(paper):
     }
 
 
-def answer_query(query, retriever, llm, top_k=5):
+def translate_summary(query, summary, papers, llm, audience=DEFAULT_AUDIENCE):
     """
-    Run one question through retrieval and summarization.
+    Step 2: turn the research summary into a business brief.
+    The LLM only sees the summary, so the brief can't draw on anything
+    step 1 didn't say. cited_not_in_summary should always be empty.
+    """
+
+    prompt = build_business_prompt(query, summary, audience)
+
+    brief = llm.generate(BUSINESS_SYSTEM_PROMPT, prompt)
+
+    check = check_citations(brief, papers)
+    summary_cited = set(check_citations(summary, papers)["cited"])
+
+    check["cited_not_in_summary"] = [
+        paper_id for paper_id in check["cited"] if paper_id not in summary_cited
+    ]
+
+    return {
+        "audience": audience,
+        "brief": brief,
+        "truncated": getattr(llm, "last_finish_reason", None) == "length",
+        "citation_check": check
+    }
+
+
+def answer_query(query, retriever, llm, top_k=5, translate=True,
+                 audience=DEFAULT_AUDIENCE):
+    """
+    Run one question through retrieval, summarization and (unless
+    translate=False) business translation.
 
     retriever: anything with search(query, top_k) returning paper dicts
                (see src/rag/README_combined_retriever.md)
@@ -112,7 +146,8 @@ def answer_query(query, retriever, llm, top_k=5):
             "sources": [],
             "summary": NO_RESULTS_MESSAGE,
             "truncated": False,
-            "citation_check": check_citations("", [])
+            "citation_check": check_citations("", []),
+            "business_insight": None
         }
 
     retrieved_content = format_retrieved_content(papers)
@@ -120,23 +155,34 @@ def answer_query(query, retriever, llm, top_k=5):
 
     summary = llm.generate(SUMMARIZATION_SYSTEM_PROMPT, prompt)
 
-    return {
+    result = {
         "query": query,
         "sources": [_source_info(paper) for paper in papers],
         "summary": summary,
         # True when the LLM hit its token limit and the summary is cut off
+        # (read before step 2, which overwrites last_finish_reason)
         "truncated": getattr(llm, "last_finish_reason", None) == "length",
-        "citation_check": check_citations(summary, papers)
+        "citation_check": check_citations(summary, papers),
+        "business_insight": None
     }
+
+    if translate:
+        result["business_insight"] = translate_summary(
+            query, summary, papers, llm, audience
+        )
+
+    return result
 
 
 def run_benchmark(benchmark_path, output_path, retriever, llm, top_k=5,
-                  delay=0, sleep=time.sleep):
+                  delay=0, sleep=time.sleep, translate=True,
+                  audience=DEFAULT_AUDIENCE):
     """
     Answer every benchmark query and write one JSON line per query.
     Queries already in the output file are skipped, so a failed run
     (e.g. a rate limit) can be restarted without redoing finished work.
     delay: seconds to pause between queries, for low per-minute limits.
+    translate: also write a business brief (a second LLM call per query).
     """
 
     queries = pd.read_csv(benchmark_path)
@@ -164,7 +210,8 @@ def run_benchmark(benchmark_path, output_path, retriever, llm, top_k=5,
 
             print(f"Answering {row['query_id']}: {row['query']}")
 
-            result = answer_query(row["query"], retriever, llm, top_k=top_k)
+            result = answer_query(row["query"], retriever, llm, top_k=top_k,
+                                  translate=translate, audience=audience)
 
             record = {
                 "query_id": row["query_id"],

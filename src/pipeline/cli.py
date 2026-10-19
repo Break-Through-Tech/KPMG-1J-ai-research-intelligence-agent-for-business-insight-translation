@@ -9,11 +9,15 @@
 # Retrievers (--retriever), both search the LanceDB index from src/indexing:
 #   lance-combined  title/abstract search + chunk search merged with RRF (default)
 #   lance           hybrid chunk search only, grouped into papers
+#
+# Each answer also gets a business brief (src/translation) unless
+# --no-translate is given; --audience picks executive, risk or technical.
 
 import argparse
 
 from .llm import DEFAULT_PROVIDER, LLM, PROVIDERS
 from .pipeline import answer_query, run_benchmark
+from src.translation.prompts import AUDIENCES, DEFAULT_AUDIENCE
 
 
 def print_answer(result):
@@ -33,6 +37,22 @@ def print_answer(result):
     if check["cited_not_retrieved"]:
         print("\nWARNING: summary cites papers that were not retrieved: "
               + ", ".join(check["cited_not_retrieved"]))
+
+    insight = result.get("business_insight")
+    if not insight:
+        return
+
+    print(f"\n========== Business brief ({insight['audience']}) ==========\n")
+    print(insight["brief"])
+
+    if insight["truncated"]:
+        print("\nWARNING: business brief was cut off (hit the token limit), "
+              "try a higher --max-tokens")
+
+    brief_check = insight["citation_check"]
+    if brief_check["cited_not_in_summary"]:
+        print("\nWARNING: business brief cites papers the summary didn't: "
+              + ", ".join(brief_check["cited_not_in_summary"]))
 
 
 def main():
@@ -117,6 +137,19 @@ def main():
         default="low"
     )
 
+    parser.add_argument(
+        "--no-translate",
+        action="store_true",
+        help="skip the business brief (saves one LLM call per question)"
+    )
+
+    parser.add_argument(
+        "--audience",
+        choices=list(AUDIENCES),
+        default=DEFAULT_AUDIENCE,
+        help="who the business brief is written for"
+    )
+
     args = parser.parse_args()
 
     if not args.query and not args.benchmark:
@@ -151,10 +184,19 @@ def main():
             retriever,
             llm,
             top_k=args.top_k,
-            delay=args.delay
+            delay=args.delay,
+            translate=not args.no_translate,
+            audience=args.audience
         )
     else:
-        print_answer(answer_query(args.query, retriever, llm, top_k=args.top_k))
+        print_answer(answer_query(
+            args.query,
+            retriever,
+            llm,
+            top_k=args.top_k,
+            translate=not args.no_translate,
+            audience=args.audience
+        ))
 
 
 if __name__ == "__main__":

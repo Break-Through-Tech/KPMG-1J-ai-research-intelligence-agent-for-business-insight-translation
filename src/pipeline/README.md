@@ -1,6 +1,6 @@
 # End-to-End Pipeline (Task #3: Connect Retrieval + Summarization)
 
-Takes a question in plain English and returns a cited summary of the relevant research.
+Takes a question in plain English and returns a cited summary of the relevant research, plus a business brief that says what it means and what to do.
 
 ```
 question
@@ -9,7 +9,27 @@ question
   -> build_summarization_prompt (src/summarization)       Lakshmee's two-shot prompt
   -> LLM (Groq openai/gpt-oss-120b, or Gemini)            4-section summary with [paper_id] citations
   -> check_citations                                      flags cited papers that were never retrieved
+  -> build_business_prompt (src/translation)              reads ONLY the summary, never the paper text
+  -> LLM (same model)                                     5-section business brief with [paper_id] citations
+  -> check_citations                                      also flags brief citations the summary didn't make
 ```
+
+## Business brief (#27 / #28)
+
+The second step turns the research summary into a brief with five sections:
+
+| Section | What it says |
+|---|---|
+| Bottom Line | 1-2 plain-English sentences answering the question, or saying the research doesn't answer it |
+| Why It Matters | business impact (risk, cost, compliance, trust), each point tied to a cited finding |
+| What To Do | 2-4 concrete actions that follow from the findings |
+| Evidence Strength | High / Medium / Low and why (number of papers, lab benchmark vs real-world, models tested) |
+| Caveats | the summary's limitations, restated as business risks |
+
+It is a separate step, not a longer summary prompt, so the facts (step 1) and the interpretation (step 2) can be checked on their own. Step 2 only sees the summary, so it can't pick up anything step 1 didn't say, and its prompt is about 1.3k tokens instead of 5-7k. The prompt forbids numbers, ROI figures or papers that aren't in the summary, and asks for implications to be worded as interpretation.
+
+`--audience` changes the focus: `executive` (default, decisions and business risk), `risk` (controls, governance, monitoring) or `technical` (what to build or test, how mature the methods are). `--no-translate` skips the brief, which halves the LLM calls per question.
+
 
 ## Files
 
@@ -62,7 +82,7 @@ python -m src.pipeline.cli --benchmark evaluation/benchmark_queries.csv \
 
 Answers are saved to `evaluation/results/end_to_end_outputs.jsonl`, one line per query. If the run stops (for example on a Groq rate limit), run the same command again and it continues from the first unanswered query.
 
-Rate limits: free tiers limit requests or tokens per minute (Gemini's free tier allows 5 requests a minute), so when a request is rate limited the pipeline waits as long as the provider asks and retries, up to `--max-retries` times (default 5). A **daily** limit stops the run with a message instead, because waiting minutes won't help; rerun later, use another key, or switch `--provider`. To avoid hitting the per-minute limit at all, add a pause between questions, e.g. `--delay 13` for Gemini's 5 requests a minute.
+Rate limits: free tiers limit requests or tokens per minute (Gemini's free tier allows 5 requests a minute), so when a request is rate limited the pipeline waits as long as the provider asks and retries, up to `--max-retries` times (default 5). A **daily** limit stops the run with a message instead, because waiting minutes won't help; rerun later, use another key, or switch `--provider`. To avoid hitting the per-minute limit at all, add a pause between questions, e.g. `--delay 26` for Gemini's 5 requests a minute (each question makes two requests; `--delay 13` with `--no-translate`).
 
 Retrievers (`--retriever`), both on the LanceDB index:
 
@@ -87,6 +107,11 @@ Other options: `--top-k` (papers per answer, default 5), `--max-tokens` (default
 | `citation_check.cited` | paper IDs the summary cites (version endings removed) |
 | `citation_check.cited_not_retrieved` | should be empty; anything here is a made-up citation |
 | `citation_check.retrieved_not_cited` | retrieved papers the summary didn't use |
+| `business_insight` | `null` with `--no-translate` or when nothing was retrieved, otherwise the fields below |
+| `business_insight.audience` | `executive`, `risk` or `technical` |
+| `business_insight.brief` | the business brief |
+| `business_insight.truncated` | `true` if the brief was cut off |
+| `business_insight.citation_check.cited_not_in_summary` | should be empty; papers the brief cites that the summary didn't |
 
 ## Using it from code
 
@@ -106,7 +131,8 @@ print(result["summary"])
 
 ## Known limitations
 
-- The output is a research summary (objective, methodology, findings, limitations), not business implications yet. Business translation is #27/#28.
+- The business brief format and prompt are a first draft for #27/#28 and haven't been reviewed by the team or scored yet.
+- Each question now makes two LLM calls (summary + brief), so free-tier limits are reached about twice as fast. Use `--no-translate` for retrieval/summary-only benchmark runs.
+- The citation checks only verify that a cited paper was retrieved (and, for the brief, cited in the summary), not that the claim is actually in that paper.
 - Each paper contributes its abstract plus one chunk, so the summarizer sees limited detail.
 - Lakshmee's prompt was tested on one paper at a time. Retrieval returns five, so the quality of multi-paper summaries still needs reviewing in Task #4.
-- The citation check only verifies that a cited paper was retrieved, not that the claim is actually in that paper.

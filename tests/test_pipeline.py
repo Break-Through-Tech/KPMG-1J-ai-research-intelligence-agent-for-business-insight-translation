@@ -149,8 +149,124 @@ def test_run_benchmark_writes_one_line_per_query_and_resumes(tmp_path):
     assert rows[1]["expected_paper_ids"] == "2609.38107v1"
 
     # Running again skips queries that are already answered
+    # (two LLM calls per query: summary + business brief)
     assert run_benchmark(benchmark, output, FakeRetriever(make_papers()), llm) == 0
-    assert len(llm.calls) == 2
+    assert len(llm.calls) == 4
+    assert rows[0]["business_insight"]["brief"] == llm.response
+
+
+def test_run_benchmark_without_translation_makes_one_call_per_query(tmp_path):
+    benchmark = tmp_path / "queries.csv"
+    pd.DataFrame([
+        {"query_id": "Q01", "category": "general", "query": "First?", "expected_paper_ids": None}
+    ]).to_csv(benchmark, index=False)
+
+    output = tmp_path / "out.jsonl"
+    llm = FakeLLM()
+
+    run_benchmark(benchmark, output, FakeRetriever(make_papers()), llm, translate=False)
+
+    assert len(llm.calls) == 1
+    assert json.loads(output.read_text())["business_insight"] is None
+
+
+# ---------- business translation ----------
+
+from src.translation.prompts import (
+    AUDIENCES,
+    BUSINESS_SECTIONS,
+    BUSINESS_SYSTEM_PROMPT,
+    FEW_SHOT_EXAMPLES,
+    build_business_prompt
+)
+
+
+class ScriptedLLM:
+    """Returns the given responses in order: summary first, then brief."""
+
+    def __init__(self, responses, finish_reasons=None):
+        self.responses = list(responses)
+        self.finish_reasons = list(finish_reasons or [])
+        self.calls = []
+        self.last_finish_reason = None
+
+    def generate(self, system_prompt, user_prompt):
+        self.calls.append((system_prompt, user_prompt))
+        if self.finish_reasons:
+            self.last_finish_reason = self.finish_reasons.pop(0)
+        return self.responses.pop(0)
+
+
+SUMMARY = "Key Findings: 31.6% of correct answers had invalid traces. [2609.38107v1]"
+
+
+def test_brief_is_written_from_the_summary_only():
+    llm = ScriptedLLM([SUMMARY, "## Bottom Line\nNot on its own. [2609.38107v1]"])
+
+    result = answer_query("Can we trust AI explanations?", FakeRetriever(make_papers()), llm,
+                          audience="risk")
+
+    system_prompt, user_prompt = llm.calls[1]
+    assert system_prompt == BUSINESS_SYSTEM_PROMPT
+    assert SUMMARY in user_prompt
+    assert AUDIENCES["risk"] in user_prompt
+    # the raw paper text is not sent to step 2
+    assert "Plan+ReAct preserved plans in 22-45% of runs." not in user_prompt
+
+    insight = result["business_insight"]
+    assert insight["audience"] == "risk"
+    assert insight["brief"].startswith("## Bottom Line")
+    assert insight["citation_check"]["cited_not_in_summary"] == []
+
+
+def test_brief_citation_not_in_summary_is_flagged():
+    # 2609.38108 was retrieved but the summary never cited it,
+    # and 2609.99999 was never retrieved at all
+    llm = ScriptedLLM([SUMMARY, "Point [2609.38108v1]. Another [2609.99999v1]."])
+
+    check = answer_query("Q?", FakeRetriever(make_papers()), llm)["business_insight"]["citation_check"]
+
+    assert check["cited_not_in_summary"] == ["2609.38108", "2609.99999"]
+    assert check["cited_not_retrieved"] == ["2609.99999"]
+
+
+def test_summary_truncation_is_kept_when_brief_finishes():
+    llm = ScriptedLLM([SUMMARY, "brief"], finish_reasons=["length", "stop"])
+
+    result = answer_query("Q?", FakeRetriever(make_papers()), llm)
+
+    assert result["truncated"] is True
+    assert result["business_insight"]["truncated"] is False
+
+
+def test_translate_false_makes_one_call():
+    llm = FakeLLM()
+
+    result = answer_query("Q?", FakeRetriever(make_papers()), llm, translate=False)
+
+    assert len(llm.calls) == 1
+    assert result["business_insight"] is None
+
+
+def test_build_business_prompt_rejects_bad_input():
+    with pytest.raises(ValueError):
+        build_business_prompt("Q?", "summary", audience="intern")
+    with pytest.raises(ValueError):
+        build_business_prompt("Q?", "   ")
+    with pytest.raises(ValueError):
+        build_business_prompt("", "summary")
+
+
+def test_few_shot_briefs_use_all_sections_and_only_summary_numbers():
+    import re
+
+    for example in FEW_SHOT_EXAMPLES:
+        headings = re.findall(r"^## (.+)$", example["brief"], re.MULTILINE)
+        assert headings == BUSINESS_SECTIONS
+
+        # the examples must model the rule: no numbers that aren't in the summary
+        for number in re.findall(r"\d+(?:\.\d+)?%?", example["brief"]):
+            assert number in example["summary"], number
 
 
 # ---------- rate limits ----------
