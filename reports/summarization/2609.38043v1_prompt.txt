@@ -1,0 +1,156 @@
+Here are two examples of research-paper summarization:
+
+EXAMPLE QUESTION:
+Can an AI model's step-by-step reasoning be trusted?
+
+EXAMPLE RESEARCH CONTENT:
+
+Paper ID: 2609.38107v1
+Title: Correct Answers, Invalid Traces
+
+Researchers evaluated GPT-2-style models using iGSM, a synthetic
+mathematics benchmark that allows reasoning traces to be checked
+against known dependencies.
+
+On the hardest problems, 31.6% of correct answers had invalid
+reasoning traces. More than half of these invalid traces passed
+syntax and arithmetic checks but failed semantic dependency checks.
+
+Models trained on swapped traces still answered approximately
+82% of in-distribution problems correctly, despite producing
+no valid reasoning traces.
+
+
+EXAMPLE EXPECTED SUMMARY:
+
+Research Objective:
+Determine whether correct LLM answers are reliably accompanied
+by valid step-by-step reasoning traces. [2609.38107v1]
+
+Methodology:
+Researchers tested GPT-2-style models on the iGSM synthetic
+mathematics benchmark, which supports programmatic verification
+of reasoning traces. They also tested models trained with
+altered reasoning traces. [2609.38107v1]
+
+Key Findings:
+On the hardest problems, 31.6% of correct answers had invalid
+traces. Over half of these invalid traces failed semantic
+dependency checks rather than syntax or arithmetic checks.
+Models trained with swapped traces achieved approximately
+82% in-distribution accuracy despite generating no valid
+traces. [2609.38107v1]
+
+Limitations:
+The experiments used small models and synthetic mathematics
+problems. The findings do not directly establish whether
+the emitted traces represent the models' internal computations.
+[2609.38107v1]
+
+
+END EXAMPLE
+
+EXAMPLE QUESTION:
+Do AI agents actually follow their declared plans?
+
+EXAMPLE RESEARCH CONTENT:
+
+Paper ID: 2609.38108v1
+Title: Do LLM Agents Execute the Plans They Declare?
+
+Researchers introduced Planning-as-Routing, which sends tasks
+to predefined, sequential, hierarchical, or search executors.
+
+They evaluated three LLMs across four benchmarks involving
+web navigation, software engineering, and embodied tasks.
+
+Generic Plan+ReAct preserved declared planning structures
+in only 22-45% of trajectories across three benchmarks.
+
+Pattern-specific executors improved task success from 0.48
+to 0.92 on ALFWorld and from 0.36 to 0.44 on
+SWE-bench Verified.
+
+Current LLMs did not reliably choose the strongest
+planning mode for each task.
+
+
+EXAMPLE EXPECTED SUMMARY:
+
+Research Objective:
+Investigate whether AI agents execute their declared plans
+and whether different planning modes improve performance.
+[2609.38108v1]
+
+Methodology:
+Researchers compared generic Plan+ReAct with
+Planning-as-Routing using four pattern-specific executors.
+They evaluated three LLMs across four benchmarks.
+[2609.38108v1]
+
+Key Findings:
+Generic Plan+ReAct preserved declared plan structures
+in only 22-45% of trajectories across three benchmarks.
+Pattern-specific execution improved success from 0.48
+to 0.92 on ALFWorld and from 0.36 to 0.44 on
+SWE-bench Verified. [2609.38108v1]
+
+Limitations:
+The provided excerpts do not specify formal experimental
+limitations. The authors identify reliable planning-mode
+selection as an unresolved research challenge.
+[2609.38108v1]
+
+
+END EXAMPLE
+
+NOW SUMMARIZE THIS NEW RESEARCH:
+
+Research Question:
+How much can the choice of simulated user change AI agent benchmarks?
+
+Retrieved Research Content:
+[2609.38043v1] Section: Abstract
+Chunk ID: 2609.38043v1::0000
+Interactive agent benchmarks and multi-turn reinforcement learning increasingly place a second language model in the role of the user. This simulated user controls what information the agent receives and when, yet current benchmarks score only the agent and do not directly measure whether the user correctly executed its assigned role. We introduce UserProxyBench, an evaluation layer over the τ - bench family, and the User Fidelity Score (UFS), which measures adherence to the benchmark’s private user instructions using task-grounded rubric criteria scored independently of agent success. Holding the agent fixed at GPT-5.5 and varying only the user proxy across 375 enterprise tasks changes mean task reward by 15.2 points, while 24.4% of successful episodes contain a user-specification violation. The dominant failure is premature disclosure: users provide information before it is requested. This behavior has little effect on task reward, yet among successful episodes it causes the agent to make 1.06 fewer tool calls on average, changing the interaction being evaluated while preserving the reward. Finally, across seven proxies we identify an empirical cost–fidelity frontier, enabling practitioners to select the least expensive simulator that satisfies a required fidelity level.
+
+[2609.38043v1] Section: 1 Introduction
+Chunk ID: 2609.38043v1::0001
+Interactive evaluation has made the “user” part of the benchmark executable. In τ -bench, an LLM user converses with an agent that follows enterprise policy and uses tools (Yao et al., 2025); τ -bench extends this to dual-control settings where the user can also act on a shared environment (Barres et al., 2025). The same pattern is entering training: MUA-RL places an LLM-simulated user inside the reinforcement-learning loop (Zhao et al., 2025), while broader agent-RL systems optimize over long interactive trajectories (Wang et al., 2025; Luo et al., 2025). This creates an experimental dependency that is easy to overlook. The user proxy controls information timing, observations, and sometimes user-side actions. If it leaks information, fabricates state, or stops early, the agent is no longer solving the intended interaction even when task reward is unchanged. For example, one Telecom proxy opens with “I’m John Smith, by the way. My number is 555-123-2002.” before the agent asks for either field, removing the information-gathering step the task was designed to exercise. Recent work shows that LLM users differ from real humans and that simulator choice can change measured assistant performance (Dou et al., 2025; Seshadri et al., 2026; Zhou et al., 2026). Purposebuilt user models improve human-likeness over assistant LMs prompted to play users (Naous et al., 2026; Wu et al., 2026). We ask a complementary question: given the benchmark’s own stated user specification, did the proxy execute that role correctly? We call this functional fidelity . It measures contract adherence, not human realism. We make three contributions. First, we introduce UserProxyBench , an evaluation layer over τ tasks that scores the user independently of the agent. Second, we show that task reward does not subsume user fidelity: nearly one quarter of successful trajectories contain a user-contract violation, and the Published at the Agentic AI Benchmarks and Applications for Enterprise Tasks Workshop at NeurIPS 2026
+
+[2609.38043v1] Section: 1 Introduction
+Chunk ID: 2609.38043v1::0002
+Second, we show that task reward does not subsume user fidelity: nearly one quarter of successful trajectories contain a user-contract violation, and the Published at the Agentic AI Benchmarks and Applications for Enterprise Tasks Workshop at NeurIPS 2026 most common failure is almost invisible to agent reward. Third, we treat user-proxy choice as an explicit operational trade-off, using UFS as a reliability constraint under which user-side inference cost can be minimized for a given evaluation or training pipeline.
+
+[2609.38043v1] Section: 2 UserProxyBench
+Chunk ID: 2609.38043v1::0003
+User Fidelity Score. Each task provides a private user blueprint (persona, known and unknown information, goal, and task-specific instructions), standing simulator guidelines, and, in some domains, user tools. Let Ci = {ci 1 , . . . , cim} be the applicable criteria for episode i . We define UFS is therefore the fraction of episodes in which the proxy satisfies every applicable criterion in its own contract. A separate judge-free user-action probe is reported for Telecom, where gold user write actions exist, but is not folded into UFS because the other domains do not expose the same signal. Task-grounded rubrics. Claude Opus 4.8 writes 4–8 atomic criteria per task from the private blueprint, the exact simulator guidelines, the user tool surface, and one sample interaction. The sample is used only to identify situations that can arise; the blueprint and guidelines remain the authority for correctness. Each criterion must cite a verbatim grounding span, be falsifiable on a trajectory, and concern only the user. An independent verifier (GPT-5.6-Sol, distinct from the generator) reviews each task-level rubric set for grounding, achievability, redundancy, and scope before scoring. Claude Opus 4.8 then grades candidate trajectories without seeing proxy identity; generator and grader are the same model, a limitation we return to in Section 4. The final set contains 2,141 criteria: 634 Telecom, 296 Airline, 656 Retail, and 555 Banking (5.7 per task), spanning four families: groundedness , premature disclosure , goal deviation , and missed information . This follows the broader use of instance-specific rubrics for open-ended evaluation and reward construction (Arora et al., 2025; Gunjal et al., 2026), but targets the user-side environment component rather than the assistant response. The dominant family derives from an explicit instruction shown to every proxy: “Disclose information progressively.
+
+[2609.38043v1] Section: 2 UserProxyBench
+Chunk ID: 2609.38043v1::0004
+The dominant family derives from an explicit instruction shown to every proxy: “Disclose information progressively. Wait for the agent to ask for specific information before providing it.” Similar explicit rules prohibit inventing unavailable information, require grounding tool results, and require continuing until the task goal is satisfied. We therefore score stated contract compliance rather than an implicit style preference. Setup. We evaluate seven reported proxies on the full base split of four enterprise domains: Telecom (114 tasks), Airline (50), Retail (114), and Banking Knowledge (97), for 375 tasks total. GPT-5.5 is frozen as the agent; only the user proxy changes. The reported set contains three open-weight and four hosted models. Each task has one rollout per proxy. We denote the benchmark’s agent-side task reward by Rτ to distinguish it from the τ benchmark family. Hosted costs use billed user-side spend; for self-hosted models, measured input/output tokens are converted using public serverless prices accessed in August 2026 (Together AI, 2026).
+
+[2609.38043v1] Section: 3.1 Fidelity-constrained proxy selection
+Chunk ID: 2609.38043v1::0005
+Once fidelity is measurable, the operational question is which simulator is the least expensive one that meets the pipeline’s reliability requirement. For a required fidelity q , where C ( U ) is user-side inference cost. Figure 1 shows the frontier. At q = . 84, Gemma-31B is the lowest-cost qualifying proxy : UFS .845 at about $0.0175 per simulation. Gemini-3.5-Flash gains 1.9 UFS points but costs 3.2 × more; raising the requirement to q = . 86 moves the operating point to Gemini, while at q = . 75 GPT-4.1-mini is cheaper. Three tested proxies are strictly dominated because another model is both cheaper and more faithful. At 64 rollouts over 1,000 prompts, Gemma-31B’s user-side inference is about $1.1k per epoch versus $3.6k for Gemini-3.5-Flash. Figure 1: Cost–fidelity frontier. Each point is one user proxy; the agent is frozen at GPT-5.5. The dashed line is the efficient frontier (no proxy is both cheaper and higher-UFS). Ringed points are strictly dominated. Because the axis is log-cost, the least-expensive proxy meeting a required UFS q changes with q : Gemma-31B at q = . 84, Gemini-3.5-Flash at q = . 86. Figure 2: Only the user simulator changed. Each point is one of seven user proxies; the grey bar spans the Rτ range induced for the same frozen GPT-5.5 agent within a domain.
+
+[2609.38043v1] Section: 3.2 The user proxy changes the benchmark result
+Chunk ID: 2609.38043v1::0006
+Nothing about the evaluated agent changes across proxy conditions, yet mean Rτ ranges from .644 to .796. Excluding Banking, whose absolute reward is uniformly low, per-domain spread ranges from .132 to .298, reaching .280 on Airline and .298 on Retail. Figure 2 makes the experimental control explicit: every point on a row is the same GPT-5.5 agent on the same domain, with only the simulated user changed. Across all 2,618 scored trajectories (of 2,625: two runs hit an infrastructure error, and five were unscorable because no criterion applied—Appendix B), 24.4% of agent-successful episodes fail UFS; on Telecom, 39.7% of all trajectories are Rτ pass / UFS fail.
+
+[2609.38043v1] Section: 3.3 Why task reward cannot screen user proxies
+Chunk ID: 2609.38043v1::0007
+Within each proxy–domain cell, we compare agent pass rate when a failure family occurs versus when it does not (at least five episodes per side). Goal deviation is uncommon (134 failures) and reduces pass rate by .515 on average. Premature disclosure is the dominant failure (480), yet changes Figure 3: Rτ is nearly blind to the dominant failure. Left: how often each failure family occurs across all proxies. Right: the change in agent pass rate when the family is present versus absent, one dot per proxy–domain cell with at least five episodes on both sides (up to 28 cells). Goal deviation costs the agent −. 52; premature disclosure, the most common failure, costs −. 04. pass rate by only −. 043 on average; its median effect is positive (+ . 033) and the sign is inconsistent across cells. Figure 3 shows both the frequency of each family and its effect on agent reward: the most common failure is the one Rτ is least able to detect. This is visible even for capable models. On Telecom, Sonnet-4-6 and GPT-4.1-mini give the frozen agent the same Rτ = . 947, but their UFS scores are .474 and .737. The gap is not only disclosure: in another successful Telecom episode, Gemma-26B says it is turning off Airplane Mode although no corresponding user tool call occurs and the device remains in Airplane Mode (Appendix C). Removing disclosure criteria substantially reorders models: Qwen3.6-35B moves from sixth to third, Gemma-26B from fourth to last, and disclosure-only versus non-disclosure UFS are almost uncorrelated ( ρ = . 071). UFS is therefore best read together with its failure profile.
+
+
+Write a summary with exactly these four sections:
+
+Research Objective:
+Methodology:
+Key Findings:
+Limitations:
+
+Use ONLY the new retrieved research content.
+Cite its actual paper IDs.
+Do not cite or reuse findings from the two examples.
+If information is missing, state that clearly.
