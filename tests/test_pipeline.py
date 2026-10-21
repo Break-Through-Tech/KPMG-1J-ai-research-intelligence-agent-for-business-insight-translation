@@ -264,9 +264,19 @@ def test_few_shot_briefs_use_all_sections_and_only_summary_numbers():
         headings = re.findall(r"^## (.+)$", example["brief"], re.MULTILINE)
         assert headings == BUSINESS_SECTIONS
 
+        body, sources = example["brief"].split("## Sources")
+
         # the examples must model the rule: no numbers that aren't in the summary
-        for number in re.findall(r"\d+(?:\.\d+)?%?", example["brief"]):
+        for number in re.findall(r"\d+(?:\.\d+)?%?", body):
             assert number in example["summary"], number
+
+        # Sources lists exactly the papers cited in the brief
+        cited = set(re.findall(r"\[(\d{4}\.\d{4,5}v\d+)\]", body))
+        listed = {item.strip() for item in sources.split(",") if item.strip()}
+        assert listed == cited
+
+        # the examples model the length rule
+        assert len(example["brief"].split()) < 200
 
 
 # ---------- rate limits ----------

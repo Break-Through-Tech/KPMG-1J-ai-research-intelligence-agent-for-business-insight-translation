@@ -16,15 +16,16 @@ question
 
 ## Business brief (#27 / #28)
 
-The second step turns the research summary into a brief with five sections:
+The second step turns the research summary into a brief with six sections, in the same format as the gold examples in `src/evaluation/gold_standard_examples.md` (on `main`). It stays under 200 words:
 
 | Section | What it says |
 |---|---|
 | Bottom Line | 1-2 plain-English sentences answering the question, or saying the research doesn't answer it |
 | Why It Matters | business impact (risk, cost, compliance, trust), each point tied to a cited finding |
-| What To Do | 2-4 concrete actions that follow from the findings |
+| What To Do | up to 3 concrete actions that follow from the findings |
 | Evidence Strength | High / Medium / Low and why (number of papers, lab benchmark vs real-world, models tested) |
-| Caveats | the summary's limitations, restated as business risks |
+| Caveat | the summary's limitations, restated as business risks |
+| Sources | the paper IDs cited in the brief |
 
 It is a separate step, not a longer summary prompt, so the facts (step 1) and the interpretation (step 2) can be checked on their own. Step 2 only sees the summary, so it can't pick up anything step 1 didn't say, and its prompt is about 1.3k tokens instead of 5-7k. The prompt forbids numbers, ROI figures or papers that aren't in the summary, and asks for implications to be worded as interpretation.
 
