@@ -9,3 +9,5 @@ sentence-transformers
 lancedb
 chromadb
 openai
+fastapi
+uvicorn

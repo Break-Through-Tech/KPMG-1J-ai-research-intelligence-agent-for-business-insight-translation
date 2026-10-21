@@ -25,3 +25,6 @@ data/index/
 # Local Chroma vector database, kept only as the retriever comparison baseline
 data/chroma_db/
 data/release/
+
+# Briefs saved by the web UI (src/app)
+data/ui_briefs/
