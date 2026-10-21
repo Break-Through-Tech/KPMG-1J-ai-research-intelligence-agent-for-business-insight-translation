@@ -1,0 +1,18 @@
+{
+  "audience": "executive",
+  "brief": "## Bottom Line\nAI agents often fail to follow the plans they claim to execute. Offline they solve 78 % of solvable tasks, but online—when they must act without inspecting the hidden state—they solve only 40 % of those tasks. They also recognize unsolvable tasks in fewer than 10 % of episodes. [2610.22469v1]\n\n## Why It Matters\n- A large gap between offline (78 %) and online (40 %) success shows agents frequently act without proper state awareness, risking incorrect or incomplete actions in real‑world deployments. [2610.22469v1]  \n- Failing to detect unsolvable tasks in >90 % of cases can lead to wasted effort, missed deadlines, and reputational damage when the system repeatedly attempts impossible goals. [2610.22469v1]  \n- Heavier prompting consumes 5–22× more tokens yet does not deliver clear performance improvements, increasing operational costs without benefit. [2610.22469v1]  \n- Variation across language models is larger than across prompting strategies or architectures, indicating model choice is a critical risk factor. [2610.22469v1]\n\n## What To Do\n- **Validate plans with independent checks**: Require a verification step that inspects the resulting action trace against the intended plan before trusting the outcome.  \n- **Prefer offline‑style verification**: Where possible, let the system simulate or inspect the hidden state to confirm plan feasibility before execution.  \n- **Monitor unsolvable‑task detection**: Implement alerts when the agent repeatedly fails to recognize impossible goals, and fall back to human review.  \n- **Control token usage**: Avoid heavyweight prompting unless a clear benefit is demonstrated; stick to concise prompts to limit cost.  \n- **Select models carefully**: Test candidate language models on your specific tasks, as performance differences are larger than those caused by prompting or architecture tweaks.  \n\n## Evidence Strength\nMedium. The conclusion is based on a single paper that evaluated four language models, six prompting strategies, and three agent architectures across five benchmark domains. Results are from controlled experiments, not live business environments. [2610.22469v1]\n\n## Caveats\n- The research did not report explicit limitations, so the findings should be validated in your own operational context before full reliance.  \n- Benchmarks use hidden PDDL models and may not capture all complexities of real‑world tasks, so performance could differ in production settings.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2610.22469"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2609.38108",
+      "2610.06001",
+      "2610.07459",
+      "2610.08927"
+    ],
+    "cited_not_in_summary": []
+  }
+}

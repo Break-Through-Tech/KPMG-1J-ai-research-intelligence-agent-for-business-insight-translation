@@ -1,0 +1,61 @@
+{
+  "query_id": "Q13",
+  "query": "How consistent is gender bias across different AI language models, and how should a company check for it?",
+  "sources": [
+    {
+      "paper_id": "2609.38036v2",
+      "title": "Gender bias across LLMs is common and highly heterogeneous",
+      "arxiv_url": "https://arxiv.org/abs/2609.38036",
+      "chunk_id": "2609.38036::0000",
+      "section": "Abstract (arXiv metadata)",
+      "score": 0.03278688524590164
+    },
+    {
+      "paper_id": "2610.16042v1",
+      "title": "AI Representations of Mental Health Stigma: Quantifying the Gap Between AI Estimations and Human Perceptions Across Gender Groups Using GPT-Based LLMs",
+      "arxiv_url": "https://arxiv.org/abs/2610.16042",
+      "chunk_id": "2610.16042::0005",
+      "section": "Algorithmic Bias in Mental Health AI",
+      "score": 0.03200204813108039
+    },
+    {
+      "paper_id": "2610.19619v1",
+      "title": "Are AI Decision Models Biased? A Case Study of Jev",
+      "arxiv_url": "https://arxiv.org/abs/2610.19619",
+      "chunk_id": "2610.19619::0000",
+      "section": "Abstract",
+      "score": 0.03128054740957967
+    },
+    {
+      "paper_id": "2610.05633v1",
+      "title": "The GenAI4IDN Benchmark 3.0 - a Public Tool to Assess Generative AI Tools for the Design of Interactive Digital Narratives",
+      "arxiv_url": "https://arxiv.org/abs/2610.05633",
+      "chunk_id": "2610.05633::0023",
+      "section": "4.2 Detailed observations",
+      "score": 0.031009615384615385
+    },
+    {
+      "paper_id": "2610.07205v1",
+      "title": "Responsible Institutional Analytics: Interpreting Bias with AI Support",
+      "arxiv_url": "https://arxiv.org/abs/2610.07205",
+      "chunk_id": "2610.07205::0020",
+      "section": "5.1.1 P7 – Illustrative example",
+      "score": 0.029418126757516764
+    }
+  ],
+  "summary": "**Research Objective:**  \nExamine how common and heterogeneous gender bias is across a broad set of large language models (LLMs) and derive recommendations for how companies should audit such bias. [2609.38036v2]\n\n**Methodology:**  \nThe authors evaluated ten LLMs released between April 2025 and June 2026 from nine vendors using two experimental paradigms:  \n1. **Study 1 – Gender attribution to stereotyped phrases:** measured whether models assigned masculine‑stereotyped phrases to female writers (and vice versa).  \n2. **Study 2 – Moral judgment of abuse/torture:** asked models to judge the acceptability of harming a woman versus a man to prevent a catastrophic outcome. [2609.38036v2]\n\n**Key Findings:**  \n- Gender‑related biases are **common** across the examined LLMs.  \n- In Study 1, **2 of 10** models more often attributed masculine‑stereotyped phrases to female writers, while **3 of 10** showed the opposite pattern. [2609.38036v2]  \n- In Study 2, several models displayed a **male‑disadvantaging asymmetry** that aligns with a known human tendency to protect female targets, though the specific conditions triggering this asymmetry varied by model; **3 other models** showed no variation across conditions. [2609.38036v2]  \n- The direction and magnitude of bias are **highly heterogeneous**, with some models behaving diametrically opposite to others. [2609.38036v2]  \n- Consequently, bias auditing should be treated as an **ongoing, multi‑vendor process** rather than a one‑time assessment. [2609.38036v2]\n\n**Limitations:**  \nThe provided research content does not specify limitations.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2609.38036"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2610.05633",
+      "2610.07205",
+      "2610.16042",
+      "2610.19619"
+    ]
+  },
+  "business_insight": null
+}

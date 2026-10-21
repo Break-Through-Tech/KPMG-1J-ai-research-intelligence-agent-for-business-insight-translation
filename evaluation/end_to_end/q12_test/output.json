@@ -1,0 +1,61 @@
+{
+  "query_id": "Q12",
+  "query": "Do AI agents actually carry out the plans they say they will follow?",
+  "sources": [
+    {
+      "paper_id": "2610.22469v1",
+      "title": "Testing the Planning Claims of LLM-Based Agents against Formal Semantics",
+      "arxiv_url": "https://arxiv.org/abs/2610.22469",
+      "chunk_id": "2610.22469::0002",
+      "section": "1 Introduction",
+      "score": 0.03252247488101534
+    },
+    {
+      "paper_id": "2609.38108v1",
+      "title": "Do LLM Agents Execute the Plans They Declare? From Planning-Mode Declaration to Pattern-Specific Execution",
+      "arxiv_url": "https://arxiv.org/abs/2609.38108",
+      "chunk_id": "2609.38108::0002",
+      "section": "1 INTRODUCTION",
+      "score": 0.03149801587301587
+    },
+    {
+      "paper_id": "2610.07459v1",
+      "title": "Auditable Claims about AI Agents",
+      "arxiv_url": "https://arxiv.org/abs/2610.07459",
+      "chunk_id": "2610.07459::0000",
+      "section": "Abstract (arXiv metadata)",
+      "score": 0.031099324975891997
+    },
+    {
+      "paper_id": "2610.06001v1",
+      "title": "AgentSpy: Making AI Agent Behavior Observable",
+      "arxiv_url": "https://arxiv.org/abs/2610.06001",
+      "chunk_id": "2610.06001::0001",
+      "section": "1 Introduction",
+      "score": 0.030090497737556562
+    },
+    {
+      "paper_id": "2610.08927v1",
+      "title": "Can AI Agents Make Open-Ended Scientific Discovery? Evidence from Station",
+      "arxiv_url": "https://arxiv.org/abs/2610.08927",
+      "chunk_id": "2610.08927::0010",
+      "section": "6 Results on Rediscovery Tasks",
+      "score": 0.027783137179239824
+    }
+  ],
+  "summary": "**Research Objective:**  \nAssess whether LLM‑based agents truly plan their actions as claimed, by testing planning performance against formal semantics rather than relying on end‑to‑end success rates or LLM judges. [2610.22469v1]\n\n**Methodology:**  \n- Tasks were described in natural language but grounded in hidden PDDL models that determine action applicability, goal achievement, and plan existence.  \n- Experiments covered five domains (including two new ones) and evaluated four language models, six prompting strategies, and three agent architectures.  \n- Performance was measured both offline (with full state inspection) and online (agents act without inspecting the state).  \n- The study compared token usage across prompting strategies and examined how often agents recognized unsolvable tasks. [2610.22469v1]\n\n**Key Findings:**  \n- The best configuration solved 78 % of solvable tasks offline but only 40 % online, indicating agents often act without state inspection.  \n- Unsolvable tasks were correctly recognized in fewer than 10 % of episodes.  \n- Heavier prompting strategies consumed 5–22× more tokens than direct prompting, without clear performance gains.  \n- Planning performance varied more across the language models than across prompting strategies or agent architectures.  \n- The authors conclude that claims of agent planning require validation through verified action traces. [2610.22469v1]\n\n**Limitations:**  \nThe provided research content does not specify limitations.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2610.22469"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2609.38108",
+      "2610.06001",
+      "2610.07459",
+      "2610.08927"
+    ]
+  },
+  "business_insight": null
+}

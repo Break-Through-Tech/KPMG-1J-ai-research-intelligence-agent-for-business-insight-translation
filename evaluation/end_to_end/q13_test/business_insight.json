@@ -1,0 +1,18 @@
+{
+  "audience": "executive",
+  "brief": "## Bottom Line\nGender bias is common but varies widely across LLMs, so a company must treat bias auditing as an ongoing, multi‑vendor effort rather than a one‑time check. [2609.38036v2]\n\n## Why It Matters\n- Bias appears in most of the ten evaluated models, indicating it is a systemic risk. [2609.38036v2]  \n- The direction of bias differs: 2 of 10 models linked masculine‑stereotyped phrases to female writers, while 3 of 10 did the opposite. [2609.38036v2]  \n- In moral‑judgment tests, several models favored protecting women (male‑disadvantaging asymmetry), but 3 models showed no difference, highlighting unpredictable behavior. [2609.38036v2]  \n- This heterogeneity means a model that passes one bias test may fail another, creating reputational and compliance risk if unchecked. [2609.38036v2]\n\n## What To Do\n- **Implement a continuous audit program** that regularly evaluates each LLM you use, rather than a single certification.  \n- **Run both attribution and moral‑judgment tests** (or equivalents) on every vendor’s model to surface the specific bias patterns they exhibit.  \n- **Document bias profiles per vendor** and track changes over time, updating safeguards as models are updated or replaced.  \n- **Select vendors that provide transparent bias‑mitigation documentation** and are willing to cooperate on ongoing testing.  \n- **Integrate bias checks into your product release pipeline** so that any new model version is automatically screened before deployment.\n\n## Evidence Strength\nMedium. The conclusion is based on a single paper that examined ten LLMs from nine vendors using two benchmark paradigms. The study is limited to experimental tests, not real‑world deployments. [2609.38036v2]\n\n## Caveats\n- The research did not report any limitations, so the findings should be validated in your own context before relying on them.  \n- Results are based on specific test designs; other bias dimensions or use‑case scenarios may behave differently.  \n- Vendor models may have been updated since the study period (April 2025‑June 2026), potentially altering bias patterns.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2609.38036"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2610.05633",
+      "2610.07205",
+      "2610.16042",
+      "2610.19619"
+    ],
+    "cited_not_in_summary": []
+  }
+}

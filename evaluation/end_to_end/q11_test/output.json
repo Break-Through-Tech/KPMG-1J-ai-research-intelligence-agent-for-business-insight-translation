@@ -1,0 +1,61 @@
+{
+  "query_id": "Q11",
+  "query": "Can an AI model's step-by-step reasoning be trusted as a record of how it reached its answer?",
+  "sources": [
+    {
+      "paper_id": "2609.38107v1",
+      "title": "Correct Answers, Invalid Traces: What Verifiable Grade-School Math Reveals About Chain-of-Thought Traces",
+      "arxiv_url": "https://arxiv.org/abs/2609.38107",
+      "chunk_id": "2609.38107::0000",
+      "section": "ABSTRACT",
+      "score": 0.031754032258064516
+    },
+    {
+      "paper_id": "2610.17544v1",
+      "title": "Many Steps into One: Reasoning Contraction and the Limits of Safe Memory Reuse for LLM Agents",
+      "arxiv_url": "https://arxiv.org/abs/2610.17544",
+      "chunk_id": "2610.17544::0004",
+      "section": "1 Introduction",
+      "score": 0.029877369007803793
+    },
+    {
+      "paper_id": "2610.07274v1",
+      "title": "A Trust Layer for Agent Evaluation",
+      "arxiv_url": "https://arxiv.org/abs/2610.07274",
+      "chunk_id": "2610.07274::0025",
+      "section": "5 Conclusion and Future Work",
+      "score": 0.02792120864410021
+    },
+    {
+      "paper_id": "2609.37203v1",
+      "title": "Learning to Prove, Not Just to Answer: Reinforcement Learning from Formal Verification for Natural-Language Logical Reasoning",
+      "arxiv_url": "https://arxiv.org/abs/2609.37203",
+      "chunk_id": "2609.37203::0002",
+      "section": "1 INTRODUCTION",
+      "score": 0.027893738140417457
+    },
+    {
+      "paper_id": "2610.05547v1",
+      "title": "More Claims, Less Evidence: Bounded Verification of AI-Generated Digital Knowledge Artifacts",
+      "arxiv_url": "https://arxiv.org/abs/2610.05547",
+      "chunk_id": "2610.05547::0014",
+      "section": "6 Conclusion",
+      "score": 0.027364110201042444
+    }
+  ],
+  "summary": "**Research Objective:**  \nAssess whether correct answers from language models are reliably accompanied by valid chain‑of‑thought (CoT) reasoning traces, i.e., whether step‑by‑step traces can be trusted as accurate records of how the model arrived at its answer. [2609.38107v1]\n\n**Methodology:**  \n- Utilized iGSM, a synthetic grade‑school mathematics benchmark that explicitly defines the quantities and dependencies required for a correct solution, enabling programmatic verification of each reasoning step.  \n- Evaluated models trained exclusively on valid, minimal CoT traces and measured both answer correctness and trace validity.  \n- Conducted interventions on trace supervision, including: (1) training with non‑minimal traces, (2) re‑asking the same problem with a different query to test inheritance of computations, (3) shuffling tokens in 10 % of training trace sentences, and (4) swapping entire training traces, then examined the impact on accuracy and trace verification. [2609.38107v1]\n\n**Key Findings:**  \n- On the hardest iGSM instances, 31.6 % of correct answers were paired with invalid traces; over half of these invalid traces passed all syntactic and arithmetic checks but failed semantic dependency checks.  \n- Models trained on non‑minimal traces produced non‑minimal outputs, and re‑asking with a different query revealed that computations from the original query could be reused, weakening the link between minimal traces and selective planning.  \n- Shuffling tokens in 10 % of training trace sentences preserved near‑clean accuracy even out‑of‑distribution, despite no trace passing verification.  \n- Training with swapped (misaligned) traces likewise retained high in‑distribution accuracy.  \nThese results highlight a decoupling between answer correctness and trace validity, especially out‑of‑distribution, and raise concerns about using CoT traces for debugging, auditing, or safety monitoring. [2609.38107v1]\n\n**Limitations:**  \nThe provided research content does not specify limitations.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2609.38107"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2609.37203",
+      "2610.05547",
+      "2610.07274",
+      "2610.17544"
+    ]
+  },
+  "business_insight": null
+}

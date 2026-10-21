@@ -1,0 +1,61 @@
+{
+  "query_id": "Q15",
+  "query": "How can the memory and compute cost of running long-context language models be reduced without losing accuracy?",
+  "sources": [
+    {
+      "paper_id": "2610.15372v1",
+      "title": "Fewer Bits, More Tries: Recovering Capability Under Memory Constraints",
+      "arxiv_url": "https://arxiv.org/abs/2610.15372",
+      "chunk_id": "2610.15372::0000",
+      "section": "ABSTRACT",
+      "score": 0.03177805800756621
+    },
+    {
+      "paper_id": "2610.06387v2",
+      "title": "Scaling Down the Scaling Laws: Parameter Efficiency and Compute-Optimal Training in Resource-Constrained Large Language Models",
+      "arxiv_url": "https://arxiv.org/abs/2610.06387",
+      "chunk_id": "2610.06387::0012",
+      "section": "6 Compute Overhead as a Multilayer Constraint",
+      "score": 0.03149801587301587
+    },
+    {
+      "paper_id": "2610.19210v1",
+      "title": "Titan-Llama: Retrofitting Pre-trained LLMs with External Neural Memory Modules",
+      "arxiv_url": "https://arxiv.org/abs/2610.19210",
+      "chunk_id": "2610.19210::0000",
+      "section": "ABSTRACT",
+      "score": 0.03149801587301587
+    },
+    {
+      "paper_id": "2610.02687v2",
+      "title": "Decoupling Memory from Context: Structured Memory for Token-Efficient Test-Time Continual Learning",
+      "arxiv_url": "https://arxiv.org/abs/2610.02687",
+      "chunk_id": "2610.02687::0010",
+      "section": "4 Experiments",
+      "score": 0.02904040404040404
+    },
+    {
+      "paper_id": "2610.10778v1",
+      "title": "MemoWM: How World Models Change What Agents Need to Remember",
+      "arxiv_url": "https://arxiv.org/abs/2610.10778",
+      "chunk_id": "2610.10778::0000",
+      "section": "ABSTRACT",
+      "score": 0.02904040404040404
+    }
+  ],
+  "summary": "**Research Objective:**  \nExplore techniques for lowering the memory and compute requirements of long‑context language models while preserving or recovering accuracy, including (1) running smaller/compressed models multiple times with test‑time verification, (2) retrofitting pre‑trained transformers with external neural memory modules, (3) using structured, retrieval‑based memory systems for token‑efficient continual learning, and (4) leveraging world models to compress stored experience for long‑term agents. [2610.15372v1] [2610.19210v1] [2610.02687v2] [2610.10778v1]\n\n**Methodology:**  \n- **Verified retry:** Run a smaller or compressed model (e.g., 7B Qwen) in parallel multiple attempts, then select the best output using public or model‑generated tests. Experiments were performed on four code‑generation benchmarks, comparing against a 32B model. [2610.15372v1]  \n- **Titan‑Llama:** Apply a blockwise attention mask to keep full‑fidelity attention over recent tokens while compressing older context into fixed‑size neural memory modules (NMMs). The method replaces attention layers of a pre‑trained Llama‑3.2‑1B‑Instruct model without retraining from scratch. [2610.19210v1]  \n- **GraphMemory:** Construct a lightweight graph‑based memory that accumulates and organizes reusable strategies. For each query, only the relevant subgraph is retrieved, keeping the amount of retrieved memory constant regardless of how many examples have been processed. Experiments used Claude Haiku 4.5 and a 4‑bit quantized Qwen‑3.8‑27B on financial‑reasoning datasets (FINER, FORMULA). [2610.02687v2]  \n- **MemoWM:** Formulate memory allocation conditioned on a world model; shared predictions from the world model are used to compress retained experience and reconstruct omitted content. A task‑aware allocation rule balances reconstruction error impact against storage cost. Evaluated on five long‑term agent‑memory benchmarks. [2610.10778v1]\n\n**Key Findings:**  \n- Running eight parallel attempts of a 7B Qwen model matches the accuracy of a 32B model on MBPP+ and exceeds it on three other code‑generation benchmarks, while using ~4 × less memory, up to 6 × faster execution, and lower energy consumption on Nvidia GPUs. [2610.15372v1]  \n- Titan‑Llama improves accuracy on long‑context tasks: from 23.87 % to 40.51 % on QuALITY and from 14.50 % to 40.75 % on LongHealth. Inference is >20 % faster in prefill, 37 % faster in decode at medium contexts, and uses 24 % less steady‑state decode memory. [2610.19210v1]  \n- GraphMemory achieves comparable downstream performance while using roughly 81–85 % fewer tokens for memory construction than baseline methods. Retrieval‑based memory avoids context‑window overflow that plagued the ACE baseline on a 48 GB GPU. [2610.02687v2]  \n- MemoWM attains 42.42 % average answer accuracy across five benchmarks, a 2.62‑point gain over the strongest baseline, and reduces per‑experience storage by 53.9 % relative to the MIRIX baseline. Stronger world models further lower storage without sacrificing task quality. [2610.10778v1]\n\n**Limitations:**  \n- GraphMemory experiments note that the ACE baseline exceeded the 48 GB memory limit of the RTX 6000 GPU even with 4‑bit quantization, highlighting a practical hardware limitation for context‑growth methods. [2610.02687v2]  \n- The other papers do not explicitly state limitations in the provided content. The provided research content does not specify additional limitations.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2610.15372",
+      "2610.19210",
+      "2610.02687",
+      "2610.10778"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2610.06387"
+    ]
+  },
+  "business_insight": null
+}

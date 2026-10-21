@@ -1,0 +1,20 @@
+{
+  "pipeline_commit": "2ac7d8f2263930490ac19178b50c623739a1399f",
+  "corpus_release": "data-2026-10-19-0628",
+  "retriever": "lance-combined",
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "temperature": 0.1,
+  "max_tokens": 4096,
+  "reasoning_effort": "low",
+  "top_k": 5,
+  "audience": "executive",
+  "question_ids": [
+    "Q10",
+    "Q11",
+    "Q12",
+    "Q13",
+    "Q14",
+    "Q15"
+  ]
+}

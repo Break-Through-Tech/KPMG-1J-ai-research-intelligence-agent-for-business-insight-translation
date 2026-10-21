@@ -1,0 +1,18 @@
+{
+  "audience": "executive",
+  "brief": "## Bottom Line\nRunning smaller or compressed models with test‑time verification, adding external neural memory, or using structured retrieval memory can cut memory and compute costs by up to 4 × and 53.9 % while keeping or improving accuracy. These techniques are promising but have only been proven on benchmark tasks, not on production workloads. [2610.15372v1] [2610.19210v1] [2610.02687v2] [2610.10778v1]\n\n## Why It Matters\n- Eight parallel runs of a 7B Qwen model achieve the same accuracy as a 32B model while using ~4 × less memory, running up to 6 × faster and consuming less energy on Nvidia GPUs. [2610.15372v1]  \n- Titan‑Llama’s blockwise attention with neural memory modules raises long‑context accuracy from 23.87 % to 40.51 % (QuALITY) and from 14.50 % to 40.75 % (LongHealth), while inference is >20 % faster in prefill and 37 % faster in decode, using 24 % less steady‑state decode memory. [2610.19210v1]  \n- GraphMemory reduces token usage for memory construction by roughly 81–85 % and avoids context‑window overflow that broke the ACE baseline on a 48 GB GPU. [2610.02687v2]  \n- MemoWM cuts per‑experience storage by 53.9 % versus the MIRIX baseline and improves average answer accuracy by 2.62 points, with stronger world models further lowering storage without hurting quality. [2610.10778v1]\n\n## What To Do\n- **Pilot verified‑retry pipelines:** Deploy a smaller model (e.g., 7B) in parallel and select the best output using automated tests. Expect similar accuracy to larger models with lower hardware spend.  \n- **Integrate neural memory modules:** For existing Llama‑style models, replace attention layers with blockwise masks and external memory (Titan‑Llama) to speed inference and shrink memory footprints on long‑context tasks.  \n- **Adopt graph‑based retrieval memory:** Use a lightweight graph to store reusable strategies, retrieving only relevant subgraphs per query to keep token consumption low and avoid GPU memory limits.  \n- **Leverage world‑model‑conditioned storage:** Implement a world model that predicts and compresses experience (MemoWM) to halve storage needs while modestly boosting accuracy.  \n- **Validate on your data:** Before full rollout, benchmark these methods on your own workloads to confirm that accuracy holds and that hardware constraints (e.g., GPU memory) are met.\n\n## Evidence Strength\nMedium. Findings come from four separate papers, each testing on multiple synthetic or domain‑specific benchmarks (code generation, long‑context reading, financial reasoning, long‑term agent memory). The work uses pre‑trained models (Qwen, Llama‑3.2, Claude Haiku) but does not include live production systems or large‑scale commercial deployments.\n\n## Caveats\n- GraphMemory’s baseline (ACE) exceeded the 48 GB memory limit of an RTX 6000 GPU, indicating that some methods may still hit hardware ceilings on very large contexts. [2610.02687v2]  \n- The other papers did not report explicit limitations, so the results have not been validated on real‑world business tasks or on different hardware configurations.  \n- Performance gains are measured on benchmark datasets; actual gains in your specific applications may vary and should be tested before committing to large‑scale adoption.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2610.15372",
+      "2610.19210",
+      "2610.02687",
+      "2610.10778"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2610.06387"
+    ],
+    "cited_not_in_summary": []
+  }
+}

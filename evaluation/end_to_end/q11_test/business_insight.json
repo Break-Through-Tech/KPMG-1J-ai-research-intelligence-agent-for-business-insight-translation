@@ -1,0 +1,18 @@
+{
+  "audience": "executive",
+  "brief": "## Bottom Line\nStep‑by‑step (chain‑of‑thought) reasoning traces cannot be relied on as a trustworthy record of how an AI model reached its answer. Even when the answer is correct, a sizable share of traces are invalid. [2609.38107v1]\n\n## Why It Matters\n- On the hardest math problems, **31.6 %** of correct answers were paired with **invalid** reasoning traces. [2609.38107v1]  \n- More than half of those invalid traces passed basic syntax and arithmetic checks but failed **semantic dependency** checks, meaning they looked plausible yet did not reflect the true logical steps. [2609.38107v1]  \n- Training manipulations (shuffling 10 % of tokens or swapping whole traces) left overall accuracy high while **no trace passed verification**, showing that correct outputs can be produced without reliable explanations. [2609.38107v1]  \n- Re‑asking the same problem with a different query allowed the model to reuse earlier computations, further weakening the link between the trace and the actual reasoning process. [2609.38107v1]  \n\nThese findings suggest that using CoT traces for auditing, debugging, compliance, or safety monitoring carries a risk of false confidence and could damage reputation if decisions are later questioned.\n\n## What To Do\n- **Do not treat CoT traces as evidence** of how a decision was made in regulated, high‑stakes, or reputation‑sensitive contexts.  \n- **Validate final answers** against independent sources or ground truth, rather than relying on the accompanying explanation.  \n- If explanations are required, **implement separate verification steps** (e.g., semantic dependency checks) that go beyond syntax and arithmetic validation.  \n- Consider **alternative audit mechanisms** such as model‑level logging, external toolchains, or human‑in‑the‑loop review that do not depend solely on the model‑generated trace.  \n- Before deploying models that claim to provide trustworthy reasoning, **run your own tests** on domain‑specific data to confirm trace validity.\n\n## Evidence Strength\nMedium. The conclusion is based on a single paper that used small GPT‑2‑style models on a synthetic grade‑school math benchmark (iGSM). Results are from controlled lab experiments, not from commercial models or real‑world business tasks. [2609.38107v1]\n\n## Caveats\n- The research did not report any limitations, so the findings should be validated in your own context before being acted upon.  \n- The benchmark is synthetic and focused on mathematics; performance and trace reliability may differ for other domains or larger, production‑grade models.  \n- Real‑world business workflows were not tested, so the risk profile could be higher or lower in practice.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2609.38107"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2609.37203",
+      "2610.05547",
+      "2610.07274",
+      "2610.17544"
+    ],
+    "cited_not_in_summary": []
+  }
+}

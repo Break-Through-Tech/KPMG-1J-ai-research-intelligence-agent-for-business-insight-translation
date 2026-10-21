@@ -1,0 +1,18 @@
+{
+  "audience": "executive",
+  "brief": "## Bottom Line\nThe choice of simulated user can shift benchmark scores by **15.2 points** even when the AI agent (GPT‑5.5) is held constant, and the most frequent simulator mistake is **premature disclosure** of information. [2609.38043v1]\n\n## Why It Matters\n- A **15.2‑point** swing in task reward means that benchmark results—and any decisions based on them—can be driven more by the user simulator than by the agent itself. [2609.38043v1]  \n- **24.4 %** of successful runs contain a user‑specification violation, indicating that a quarter of evaluations may be compromised by simulator errors. [2609.38043v1]  \n- Premature disclosure does not lower the overall reward but reduces the agent’s tool usage by **1.06 fewer tool calls** on average, potentially masking differences in agent capability. [2609.38043v1]  \n- The identified **cost‑fidelity frontier** lets firms pick cheaper simulators without sacrificing required fidelity, but the trade‑off must be managed carefully. [2609.38043v1]\n\n## What To Do\n- Treat benchmark scores as **relative** rather than absolute; verify results with multiple user proxies before making high‑stakes decisions.  \n- Audit simulated user behavior for premature disclosure and other specification violations; flag any episode where the user provides information before being asked.  \n- Use the cost‑fidelity frontier to select a simulator that meets your fidelity threshold at the lowest cost, but validate that the chosen proxy does not introduce systematic bias.  \n- Complement simulated‑user benchmarks with real‑user testing or human‑in‑the‑loop evaluations to confirm that performance translates to production environments.  \n\n## Evidence Strength\nMedium. The findings come from a single paper that evaluated one agent (GPT‑5.5) across 375 tasks using seven simulated users in a benchmark setting, not from live business deployments. [2609.38043v1]\n\n## Caveats\n- The research did not report specific limitations, so the findings should be validated in your own context before relying on them.  \n- Results are based on a synthetic benchmark (τ‑bench family); real‑world user behavior may differ, affecting the relevance of the cost‑fidelity frontier and the impact of premature disclosure.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2609.38043"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2610.00651",
+      "2610.16523",
+      "2610.19159",
+      "2610.22990"
+    ],
+    "cited_not_in_summary": []
+  }
+}

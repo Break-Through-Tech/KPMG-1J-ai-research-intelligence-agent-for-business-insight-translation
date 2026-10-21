@@ -1,0 +1,61 @@
+{
+  "query_id": "Q10",
+  "query": "How much can the choice of simulated user change the results of an AI agent benchmark, and what mistake do simulated users make most often?",
+  "sources": [
+    {
+      "paper_id": "2609.38043v1",
+      "title": "UserProxyBench: Evaluating LLM User Simulators for Agent Benchmarks and Training",
+      "arxiv_url": "https://arxiv.org/abs/2609.38043",
+      "chunk_id": "2609.38043::0001",
+      "section": "1 Introduction",
+      "score": 0.03278688524590164
+    },
+    {
+      "paper_id": "2610.22990v1",
+      "title": "PersonaCUABench: Benchmarking Computer-Use Agents Serving Diverse Personas",
+      "arxiv_url": "https://arxiv.org/abs/2610.22990",
+      "chunk_id": "2610.22990::0023",
+      "section": "6 Related Work",
+      "score": 0.031754032258064516
+    },
+    {
+      "paper_id": "2610.00651v1",
+      "title": "Agent Evaluation Reliability: More Tasks Won't (Always) Fix An Agent Leaderboard",
+      "arxiv_url": "https://arxiv.org/abs/2610.00651",
+      "chunk_id": "2610.00651::0001",
+      "section": "1 INTRODUCTION",
+      "score": 0.029273504273504274
+    },
+    {
+      "paper_id": "2610.16523v1",
+      "title": "EAU: Environment-Agent-User Co-evolution for Training User-Centric Agents",
+      "arxiv_url": "https://arxiv.org/abs/2610.16523",
+      "chunk_id": "2610.16523::0028",
+      "section": "ETHICS STATEMENT",
+      "score": 0.028693528693528692
+    },
+    {
+      "paper_id": "2610.19159v1",
+      "title": "Into the Unknown: Benchmarking AI agents on open scientific research problems",
+      "arxiv_url": "https://arxiv.org/abs/2610.19159",
+      "chunk_id": "2610.19159::0013",
+      "section": "3 Experimental setup",
+      "score": 0.028125
+    }
+  ],
+  "summary": "**Research Objective:**  \nAssess how the choice of simulated user (user proxy) influences the outcomes of an AI agent benchmark and identify the most common mistake made by simulated users. [2609.38043v1]\n\n**Methodology:**  \n- Introduced **UserProxyBench**, an evaluation layer built on the τ‑bench family that scores the user simulator independently of the agent.  \n- Defined the **User Fidelity Score (UFS)** to measure adherence to the benchmark’s private user instructions using task‑grounded rubric criteria.  \n- Fixed the agent to **GPT‑5.5** and varied the user proxy across 375 enterprise tasks, recording task rewards and user‑specification violations.  \n- Analyzed the types of violations, focusing on premature disclosure (providing information before it is requested).  \n- Compared seven different user proxies to map an empirical cost‑fidelity frontier for selecting simulators. [2609.38043v1]\n\n**Key Findings:**  \n- Varying only the user proxy changes the mean task reward by **15.2 points** while keeping the agent constant.  \n- **24.4 %** of successful episodes contain a user‑specification violation.  \n- The dominant failure mode is **premature disclosure**, where the simulated user provides information before the agent asks for it.  \n- Premature disclosure has little effect on overall task reward but causes the agent to make **1.06 fewer tool calls on average** in successful episodes, altering the interaction being evaluated while preserving the reward.  \n- Across the seven proxies, an empirical **cost‑fidelity frontier** was identified, enabling practitioners to choose the least expensive simulator that meets a required fidelity level. [2609.38043v1]\n\n**Limitations:**  \nThe provided research content does not specify limitations.",
+  "truncated": false,
+  "citation_check": {
+    "cited": [
+      "2609.38043"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2610.00651",
+      "2610.16523",
+      "2610.19159",
+      "2610.22990"
+    ]
+  },
+  "business_insight": null
+}
