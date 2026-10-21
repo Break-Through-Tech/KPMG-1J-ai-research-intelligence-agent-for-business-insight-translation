@@ -51,6 +51,7 @@ results = search(table, embedder, "retrieval augmented generation for audits", k
 | `--chunk-report` | `data/chunk_report.json` | the chunk settings are read from here and recorded in the manifest |
 | `--index-dir` | `data/index` | where the LanceDB table and manifest live |
 | `--model` | `BAAI/bge-small-en-v1.5` | embedding model |
+| `--max-minutes` | none | stop adding papers after this long (newest papers go first, each batch is saved); the rest is left as `backlog_papers` in the manifest for the next run |
 | `--rebuild` | off | delete the index and embed everything again (needed after changing the model or chunk settings) |
 | `--search` | | run a query instead of updating |
 | `--k` | 5 | number of results for `--search` |

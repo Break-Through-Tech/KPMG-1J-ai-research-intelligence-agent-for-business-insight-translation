@@ -123,3 +123,21 @@ def test_bad_embeddings_never_replace_indexed_rows(index, embedder, monkeypatch)
     assert table.count_rows() == 3
     assert search(table, embedder, "financial filings", k=1)[0]["paper_id"] == "2609.00001"
 
+
+
+def test_time_limit_saves_newest_papers_and_leaves_a_backlog(tmp_path, embedder):
+    # the clock jumps past the limit during the first batch, so only one paper gets in
+    ticks = iter([0, 100, 200, 300])
+    table = open_index(tmp_path, embedder)
+    added = update_index(table, ALL, embedder, tmp_path, max_seconds=50,
+                         papers_per_batch=1, clock=lambda: next(ticks))
+
+    assert added == 1
+    # newest first: 2609.00003 was published last
+    assert table.search().limit(None).to_pandas()["paper_id"].tolist() == ["2609.00003"]
+    assert load_manifest(tmp_path)["backlog_papers"] == 2
+
+    # the next run picks up the rest
+    assert update_index(table, ALL, embedder, tmp_path) == 2
+    assert table.count_rows() == 3
+    assert load_manifest(tmp_path)["backlog_papers"] == 0

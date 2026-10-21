@@ -84,8 +84,8 @@ jobs:
 
       - name: Pull new papers
         id: update
-        # stop ingesting with time to spare, so the steps below still publish everything saved so far
-        timeout-minutes: 270
+        # stop ingesting with time to spare, so the steps below still index and publish everything saved so far
+        timeout-minutes: 180
         run: ./scripts/pull_recent_papers.sh --delete-pdfs
 
       - name: Preprocess whatever was saved
@@ -100,22 +100,30 @@ jobs:
           echo "added=$((AFTER - ${{ steps.download.outputs.before }}))" >> "$GITHUB_OUTPUT"
 
       - name: Chunk and index new papers
-        # chunk_input and chunks are rebuilt from papers_clean every run (seconds), but the index
+        # chunk_input and chunks are rebuilt from papers_clean every run (minutes), but the index
         # only embeds papers that are new or have a newer version, so the rest is reused.
+        # embedding runs on CPU (~1,000 papers an hour), so it stops after 90 minutes and saves what it
+        # has; the leftover papers (backlog_papers in the manifest) are picked up by the next run.
+        # runs even when no papers were added, so a backlog keeps shrinking.
         # if this fails, the publish step below still runs and re-publishes the previous index
-        if: ${{ !cancelled() && steps.count.outputs.added != '0' && steps.count.outputs.added != '' }}
+        if: ${{ !cancelled() && hashFiles('data/papers_clean.parquet') != '' }}
         id: index
-        timeout-minutes: 45
+        timeout-minutes: 110
         run: |
+          # so a crash in the indexer isn't hidden by the tee below
+          set -o pipefail
           python -m src.preprocessing.prepare_for_chunking
           python -m src.chunking.cli
-          python -m src.indexing.cli
+          python -m src.indexing.cli --max-minutes 90 | tee index.log
+          # "added N chunks" from the last line; 0 means the index didn't change
+          echo "indexed=$(sed -n 's/^added \([0-9,]*\) chunks.*/\1/p' index.log | tr -d , | tail -1)" >> "$GITHUB_OUTPUT"
           # smoke test: the updated index loads and answers a query
           python -m src.indexing.cli --search "large language model agents" --k 3
           tar -czf data/index.tar.gz -C data index
 
       - name: Publish a new data release
-        if: ${{ !cancelled() && steps.count.outputs.added != '0' && steps.count.outputs.added != '' }}
+        # new papers, or more of the index backlog embedded
+        if: ${{ !cancelled() && ((steps.count.outputs.added != '0' && steps.count.outputs.added != '') || (steps.index.outputs.indexed != '0' && steps.index.outputs.indexed != '')) }}
         run: |
           TAG="data-$(date -u +%Y-%m-%d-%H%M)"
           python - <<'EOF' > notes.md
@@ -132,6 +140,9 @@ jobs:
               m = json.load(open("data/index/index_manifest.json"))
               print(f"\n**Search index:** {m['n_chunks']:,} chunks from {m['n_papers']:,} papers "
                     f"({m['date_range'][0]} to {m['date_range'][1]}), model `{m['model_name']}`.")
+              if m.get("backlog_papers"):
+                  print(f"\n**Index backlog:** {m['backlog_papers']:,} papers aren't searchable yet, "
+                        "the next run embeds them.")
           else:
               print("\n**Note:** the index wasn't updated this run (${{ steps.index.outcome }}); "
                     "the previous index is re-published if there was one, and the next run catches up.")
@@ -164,7 +175,7 @@ jobs:
           done
 
       - name: Nothing new
-        if: ${{ !cancelled() && steps.count.outputs.added == '0' }}
+        if: ${{ !cancelled() && steps.count.outputs.added == '0' && (steps.index.outputs.indexed == '0' || steps.index.outputs.indexed == '') }}
         run: echo "no new papers since the last release, nothing published"
 
       - name: Check we didn't miss any papers

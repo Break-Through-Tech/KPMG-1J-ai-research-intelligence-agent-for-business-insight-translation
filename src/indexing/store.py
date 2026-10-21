@@ -2,6 +2,8 @@
 # its text, and the metadata needed to cite it and filter on it
 # data/chunks.parquet -> data/index/ (LanceDB table "chunks" + index_manifest.json)
 
+import time
+
 import lancedb
 import numpy as np
 import pyarrow as pa
@@ -79,16 +81,9 @@ def _in_list(column, values) -> str:
     return f"{column} IN ({quoted})"
 
 
-def update_index(table, chunks, embedder, index_dir) -> int:
-    """embeds only new or changed papers and swaps them into the index. returns rows added"""
-    validate_chunks(chunks)
-    todo = papers_to_index(table, chunks)
-    if not todo:
-        print("index is already up to date")
-        return 0
-
-    new = chunks[chunks["paper_id"].isin(todo)].reset_index(drop=True)
-    print(f"embedding {len(new):,} chunks from {len(todo):,} new or updated papers")
+def _add_papers(table, chunks, papers, embedder) -> int:
+    """embeds one batch of papers and swaps them into the index. returns rows added"""
+    new = chunks[chunks["paper_id"].isin(papers)].reset_index(drop=True)
     texts = new["text_for_embedding"].astype(str).tolist()
     # the model silently drops tokens past max_seq_length; chunking with --tokenizer should keep this at 0
     n_truncated = embedder.count_truncated(texts)
@@ -107,8 +102,45 @@ def update_index(table, chunks, embedder, index_dir) -> int:
 
     # drop any older version first. if a crash happens in between, those papers are just
     # missing from the index, so the next run sees them as new and adds them back
-    table.delete(_in_list("paper_id", todo))
+    table.delete(_in_list("paper_id", papers))
     table.add(pa.Table.from_pandas(rows, schema=table.schema, preserve_index=False))
+    return len(rows)
+
+
+def update_index(table, chunks, embedder, index_dir, max_seconds=None,
+                 papers_per_batch=200, clock=time.monotonic) -> int:
+    """embeds only new or changed papers and swaps them into the index. returns rows added
+
+    papers are added in batches, newest first, and each batch is saved as soon as it's embedded.
+    with max_seconds, it stops after the batch that runs past the limit; the papers left over
+    are counted in the manifest as backlog_papers and picked up by the next run
+    """
+    validate_chunks(chunks)
+    todo = papers_to_index(table, chunks)
+    if not todo:
+        print("index is already up to date")
+        manifest = load_manifest(index_dir) or {}
+        if manifest.get("backlog_papers"):
+            save_manifest(index_dir, {**manifest, "backlog_papers": 0})
+        return 0
+
+    # newest papers first, so a run that stops early still makes the latest research searchable
+    newest = chunks[chunks["paper_id"].isin(todo)].groupby("paper_id")["published_date"].max()
+    order = newest.sort_values(ascending=False, kind="stable").index.tolist()
+    n_chunks = int(chunks["paper_id"].isin(todo).sum())
+    print(f"embedding {n_chunks:,} chunks from {len(order):,} new or updated papers")
+
+    start = clock()
+    added = 0
+    done = 0
+    while done < len(order):
+        batch = order[done:done + papers_per_batch]
+        added += _add_papers(table, chunks, batch, embedder)
+        done += len(batch)
+        print(f"indexed {done:,}/{len(order):,} papers ({added:,} chunks)")
+        if max_seconds is not None and clock() - start >= max_seconds and done < len(order):
+            print(f"stopped at the time limit, {len(order) - done:,} papers left for the next run")
+            break
 
     # keyword index for hybrid search; after the first build, optimize() folds new rows in
     # (and compacts the small files each add creates)
@@ -124,8 +156,9 @@ def update_index(table, chunks, embedder, index_dir) -> int:
         "n_chunks": int(table.count_rows()),
         "n_papers": int(stats["paper_id"].nunique()),
         "date_range": [stats["published_date"].min(), stats["published_date"].max()],
+        "backlog_papers": len(order) - done,
     })
-    return len(rows)
+    return added
 
 def search(table, embedder, query, k=10, where=None, hybrid=True) -> list[dict]:
     #top k chunks for a natural language query

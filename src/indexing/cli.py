@@ -1,5 +1,6 @@
 # command line entry point for the indexing step
 # ex: python -m src.indexing.cli                       # add new chunks from data/chunks.parquet
+#     python -m src.indexing.cli --max-minutes 90         # stop after 90 minutes, the rest waits for the next run
 #     python -m src.indexing.cli --rebuild             # start over, after changing the model or chunk settings
 #     python -m src.indexing.cli --search "how are companies evaluating LLM agents?" --since 2026-09-01
 
@@ -23,6 +24,8 @@ def main():
     parser.add_argument("--search", help="run a query instead of updating")
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--since", help="only papers published on or after this date (YYYY-MM-DD)")
+    parser.add_argument("--max-minutes", type=float,
+                        help="stop adding papers after this long; what's done is saved and the rest waits for the next run")
     args = parser.parse_args()
 
     # fail before touching the index, so a missing input never leaves a half-made index behind
@@ -40,7 +43,8 @@ def main():
             print(f"{i}. {r['title']} ({r['published_date']}) [{r['section']}]\n   {r['arxiv_url']}\n   {r['text'][:200]}...\n")
         return
 
-    added = update_index(table, pd.read_parquet(args.chunks), embedder, args.index_dir)
+    max_seconds = args.max_minutes * 60 if args.max_minutes else None
+    added = update_index(table, pd.read_parquet(args.chunks), embedder, args.index_dir, max_seconds=max_seconds)
     print(f"added {added:,} chunks, index now has {table.count_rows():,}")
 
 
