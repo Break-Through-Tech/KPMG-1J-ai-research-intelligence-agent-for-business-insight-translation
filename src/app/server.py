@@ -27,6 +27,9 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 STATUSES = {"draft", "approved", "changes"}
 
+# More papers make the summary prompt longer and slower without better briefs
+MAX_PAPERS = 5
+
 # Benchmark questions offered as one-click examples on the ask page
 EXAMPLE_QUERY_IDS = ["Q11", "Q13", "Q12", "Q19"]
 
@@ -114,8 +117,8 @@ def create_app(retriever, llm, store, corpus=None, examples=None):
         if not question:
             raise HTTPException(400, "Please type a question.")
         check_audience(request.audience)
-        if not 1 <= request.top_k <= 10:
-            raise HTTPException(400, "Papers per answer must be between 1 and 10.")
+        if not 1 <= request.top_k <= MAX_PAPERS:
+            raise HTTPException(400, f"Papers per answer must be between 1 and {MAX_PAPERS}.")
 
         result = run_llm(lambda: answer_query(
             question, retriever, llm, top_k=request.top_k,

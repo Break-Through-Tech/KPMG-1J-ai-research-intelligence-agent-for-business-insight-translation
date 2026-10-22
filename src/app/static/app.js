@@ -245,7 +245,7 @@ function renderAsk(scrollTo) {
         <div class="field" style="gap: 6px">
           <label for="topk" class="small-label">Papers per answer</label>
           <select id="topk">
-            ${[3, 5, 10].map((k) => `<option value="${k}"${k === state.topK ? " selected" : ""}>${k}</option>`).join("")}
+            ${[3, 5].map((k) => `<option value="${k}"${k === state.topK ? " selected" : ""}>${k}</option>`).join("")}
           </select>
         </div>
         <button type="submit" class="primary" id="generate"${state.busy ? " disabled" : ""}>

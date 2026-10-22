@@ -278,6 +278,9 @@ def test_few_shot_briefs_use_all_sections_and_only_summary_numbers():
         # the examples model the length rule
         assert len(example["brief"].split()) < 200
 
+        # a summary without limitations doesn't mean the research has none
+        assert "did not report limitations" not in example["brief"]
+
 
 # ---------- rate limits ----------
 

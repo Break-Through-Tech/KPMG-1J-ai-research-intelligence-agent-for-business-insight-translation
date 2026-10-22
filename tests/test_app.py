@@ -106,7 +106,7 @@ def test_bad_requests(setup):
 
     assert client.post("/api/ask", json={"question": "   "}).status_code == 400
     assert client.post("/api/ask", json={"question": "Q?", "audience": "intern"}).status_code == 400
-    assert client.post("/api/ask", json={"question": "Q?", "top_k": 50}).status_code == 400
+    assert client.post("/api/ask", json={"question": "Q?", "top_k": 10}).status_code == 400
     assert client.get("/api/briefs/does-not-exist").status_code == 404
     assert client.get("/api/briefs/..%2F..%2Fetc").status_code == 404
     assert llm.calls == 0
