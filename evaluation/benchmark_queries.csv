@@ -1,0 +1,26 @@
+query_id,category,query,expected_paper_ids
+Q01,general,What recent research has been done on improving the accuracy of large language models?,
+Q02,general,What approaches are researchers using to make AI models more efficient?,
+Q03,general,What are the latest approaches for improving retrieval-augmented generation (RAG) systems?,
+Q04,business,What does recent AI research suggest about the potential benefits and risks of adopting generative AI in the workplace?,
+Q05,business,What research findings about AI agents could be relevant to businesses considering workflow automation?,
+Q06,business,"How can AI improve decision-making in organizations, and what limitations should businesses consider?",
+Q07,ambiguous,How can companies make AI-generated answers more trustworthy?,
+Q08,ambiguous,How can businesses reduce the risk of AI giving users incorrect information?,
+Q09,ambiguous,What approaches could help an organization safely scale the use of generative AI?,
+Q10,specific,"How much can the choice of simulated user change the results of an AI agent benchmark, and what mistake do simulated users make most often?",2609.38043v1
+Q11,specific,Can an AI model's step-by-step reasoning be trusted as a record of how it reached its answer?,2609.38107v1
+Q12,specific,Do AI agents actually carry out the plans they say they will follow?,2609.38108v1
+Q13,specific,"How consistent is gender bias across different AI language models, and how should a company check for it?",2609.38036v1
+Q14,specific,How can a company estimate how confident an AI model is in its own answer?,2609.38070v1
+Q15,specific,How can the memory and compute cost of running long-context language models be reduced without losing accuracy?,2609.38166v1;2609.38169v1
+Q16,general,What AI techniques are being researched for detecting hallucinations in language models?,
+Q17,general,How are researchers evaluating the performance and reliability of AI agents?,
+Q18,general,What methods are being studied to reduce bias and improve fairness in AI systems?,
+Q19,business,What does recent research say about the costs and efficiency tradeoffs of deploying large language models?,
+Q20,business,What research findings are relevant to companies concerned about AI safety and security risks?,
+Q21,business,How can organizations evaluate whether an AI system is reliable enough to use in real business processes?,
+Q22,ambiguous,How can businesses know when to trust an AI model's output?,
+Q23,ambiguous,What should companies worry about when AI systems act on their own?,
+Q24,ambiguous,How can organizations keep humans in control of AI systems?,
+Q25,ambiguous,What are the hidden costs of using generative AI at scale?,

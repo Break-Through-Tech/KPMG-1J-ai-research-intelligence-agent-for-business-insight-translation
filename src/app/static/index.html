@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research Insight Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#/">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#93B4FF" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M18 18l7 7"></path><path d="M8 12h8M12 8v8"></path></svg>
+      <span class="brand-text">
+        <span class="brand-name">Research Insight Agent</span>
+        <span class="brand-sub">Prototype · KPMG 1J</span>
+      </span>
+    </a>
+    <nav aria-label="Main" class="nav">
+      <a href="#/" data-nav="ask">Ask</a>
+      <a href="#/saved" data-nav="saved">Saved briefs</a>
+      <a href="#/how" data-nav="how">How it works</a>
+    </nav>
+    <div class="corpus">
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#5BD69A"></circle></svg>
+      <span id="corpus-text">Loading…</span>
+    </div>
+  </div>
+</header>
+<main id="app" class="page"></main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

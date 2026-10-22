@@ -2,8 +2,12 @@ pandas
 pyarrow
 arxiv
 requests
-pymupdf4llm
+pymupdf4llm<2  # 2.0 is an empty package; its code moved into pymupdf 2.x
 matplotlib
 pytest
 sentence-transformers
 lancedb
+chromadb
+openai
+fastapi
+uvicorn
