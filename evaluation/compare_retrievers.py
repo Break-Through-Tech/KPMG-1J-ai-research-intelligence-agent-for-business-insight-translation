@@ -6,7 +6,7 @@
 #   lance-combined   Thania's method (title/abstract + chunk search, RRF) on LanceDB
 #
 # Run from the project root:
-# python -m evaluation.compare_retrievers --papers data/release/papers_clean.parquet
+# python -m evaluation.compare_retrievers --papers data/papers_clean.parquet
 
 import argparse
 import time

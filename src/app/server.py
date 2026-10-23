@@ -224,7 +224,7 @@ def main():
     parser.add_argument("--provider", choices=list(PROVIDERS), default=DEFAULT_PROVIDER)
     parser.add_argument("--model")
     parser.add_argument("--max-tokens", type=int, default=4096)
-    parser.add_argument("--papers", default="data/release/papers_clean.parquet")
+    parser.add_argument("--papers", default="data/papers_clean.parquet")
     parser.add_argument("--index-dir", default="data/index")
     parser.add_argument("--benchmark", default="evaluation/benchmark_queries.csv")
     parser.add_argument("--briefs-dir", default="data/ui_briefs")

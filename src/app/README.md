@@ -10,7 +10,7 @@ export GROQ_API_KEY=...                 # or GEMINI_API_KEY with --provider gemi
 python -m src.app                       # then open http://localhost:8000
 ```
 
-It needs the LanceDB index in `data/index` and the papers in `data/release/papers_clean.parquet` (both built by `src/indexing`). Startup takes a little while because it loads the embedding model and embeds every paper's title and abstract once.
+It needs the papers in `data/papers_clean.parquet` and the LanceDB index built from them in `data/index` (see `src/pipeline/README.md`, Setup). Startup takes a little while because it loads the embedding model and embeds every paper's title and abstract once.
 
 Options: `--provider groq|gemini`, `--model`, `--port`, `--papers`, `--index-dir`, `--briefs-dir`.
 

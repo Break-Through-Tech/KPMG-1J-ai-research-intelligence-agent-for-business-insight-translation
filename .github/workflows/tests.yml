@@ -1,0 +1,40 @@
+# runs the test suite on every pull request and every push to main, so a broken change
+# shows a red X on the PR instead of failing the next scheduled corpus update
+
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true   # a newer push to the same PR replaces the older run
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache the embedding model
+        # some tests load it; same key as the corpus workflow, so the download is shared
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-bge-small-en-v1.5
+
+      - name: Run tests
+        run: python -m pytest tests/ -q
