@@ -1,6 +1,8 @@
 # Web UI for consultants: ask a question, get a cited business brief.
 #
-# python -m src.app                      (Groq, needs GROQ_API_KEY)
+# python -m src.app --provider nvidia    (needs NVIDIA_API_KEY, free at build.nvidia.com)
+# python -m src.app                      (Groq, needs GROQ_API_KEY; its free tier is too small
+#                                         for the results and limitations passages)
 # python -m src.app --provider gemini    (needs GEMINI_API_KEY)
 # then open http://localhost:8000
 #
@@ -224,6 +226,8 @@ def main():
     parser.add_argument("--provider", choices=list(PROVIDERS), default=DEFAULT_PROVIDER)
     parser.add_argument("--model")
     parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--reasoning-effort", choices=["low", "medium", "high", "none"], default="low",
+                        help="none leaves the setting out, for models that don't accept it")
     parser.add_argument("--papers", default="data/papers_clean.parquet")
     parser.add_argument("--index-dir", default="data/index")
     parser.add_argument("--benchmark", default="evaluation/benchmark_queries.csv")
@@ -233,7 +237,8 @@ def main():
     args = parser.parse_args()
 
     # Check the API key before the slow retriever startup
-    llm = LLM(provider=args.provider, model=args.model, max_tokens=args.max_tokens)
+    llm = LLM(provider=args.provider, model=args.model, max_tokens=args.max_tokens,
+              reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort)
 
     print("Loading the retriever and embedding model...")
     from src.rag.lance_retriever import LanceCombinedRetriever

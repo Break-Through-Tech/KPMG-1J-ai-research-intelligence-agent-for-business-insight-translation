@@ -76,11 +76,14 @@ def build_retrievers(methods, papers_path, index_dir, chroma_dir):
 
         elif method == "lance":
             from src.rag.lance_retriever import LanceRetriever
-            retrievers[method] = LanceRetriever(papers_path=papers_path, index_dir=index_dir)
+            # only the ranking is compared, so skip the extra passages the LLM would read
+            retrievers[method] = LanceRetriever(papers_path=papers_path, index_dir=index_dir,
+                                                passages=False)
 
         elif method == "lance-combined":
             from src.rag.lance_retriever import LanceCombinedRetriever
-            retrievers[method] = LanceCombinedRetriever(papers_path=papers_path, index_dir=index_dir)
+            retrievers[method] = LanceCombinedRetriever(papers_path=papers_path, index_dir=index_dir,
+                                                        passages=False)
 
         else:
             raise ValueError(f"Unknown method: {method}")

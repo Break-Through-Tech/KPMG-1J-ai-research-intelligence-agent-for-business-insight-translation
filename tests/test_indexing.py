@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from src.indexing.manifest import load_manifest
-from src.indexing.store import open_index, search, update_index
+from src.indexing.store import indexed_versions, load_paper_vectors, open_index, search, update_index, update_paper_vectors
 from src.vectorizing.embedder import TextEmbedder
 
 PAPERS = {
@@ -141,3 +141,55 @@ def test_time_limit_saves_newest_papers_and_leaves_a_backlog(tmp_path, embedder)
     assert update_index(table, ALL, embedder, tmp_path) == 2
     assert table.count_rows() == 3
     assert load_manifest(tmp_path)["backlog_papers"] == 0
+
+
+def make_papers(version=1, abstract="An abstract."):
+    return pd.DataFrame([{"base_id": p, "version": version, "title": PAPERS[p][0], "abstract_clean": abstract}
+                         for p in PAPERS])
+
+
+def test_paper_vectors_are_stored_once_per_indexed_paper(index, embedder):
+    table, path = index
+    assert update_paper_vectors(path, table, make_papers(), embedder) == 3
+    assert set(load_paper_vectors(path)) == set(PAPERS)
+    # already up to date, nothing to embed
+    assert update_paper_vectors(path, table, make_papers(), embedder) == 0
+
+
+def test_newer_paper_version_gets_a_new_vector(index, embedder):
+    table, path = index
+    update_paper_vectors(path, table, make_papers(), embedder)
+    old = load_paper_vectors(path)["2609.00001"][1]
+
+    assert update_paper_vectors(path, table, make_papers(version=2, abstract="A new abstract."), embedder) == 3
+    version, vector = load_paper_vectors(path)["2609.00001"]
+    assert version == 2 and not (vector == old).all()
+    assert len(load_paper_vectors(path)) == 3
+
+
+def test_papers_still_in_the_backlog_get_no_paper_vector(tmp_path, embedder):
+    table = open_index(tmp_path, embedder)
+    update_index(table, make_chunks("2609.00002"), embedder, tmp_path)
+
+    assert update_paper_vectors(tmp_path, table, make_papers(), embedder) == 1
+    assert set(load_paper_vectors(tmp_path)) == {"2609.00002"}
+
+
+def test_index_without_paper_table_loads_no_vectors(index):
+    _, path = index
+    assert load_paper_vectors(path) == {}
+
+
+def test_indexed_versions_lists_what_the_index_has(index, embedder):
+    table, path = index
+    assert indexed_versions(path) == {p: 1 for p in PAPERS}
+    update_index(table, make_chunks("2609.00001", version=2, text="Version two."), embedder, path)
+    assert indexed_versions(path)["2609.00001"] == 2
+    assert indexed_versions(path / "no_index_here") == {}
+
+
+def test_empty_chunks_mean_nothing_to_add(index, embedder):
+    # chunking found nothing the index didn't already have
+    table, path = index
+    assert update_index(table, pd.DataFrame(), embedder, path) == 0
+    assert table.count_rows() == 3

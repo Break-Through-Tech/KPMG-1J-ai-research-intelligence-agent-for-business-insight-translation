@@ -61,7 +61,8 @@ python -m src.indexing.cli
 
 The index and `--papers` must come from the same release. The retriever refuses to start if the index has papers the corpus file doesn't.
 
-3. Set an API key, either:
+3. Set an API key, one of:
+   - NVIDIA: `export NVIDIA_API_KEY=nvapi-...`, free trial key at build.nvidia.com, then add `--provider nvidia` to the commands below. The default model is `nvidia/nemotron-3-ultra-550b-a55b` (about 2 minutes a question, careful with numbers and citations); `--model openai/gpt-oss-20b` is faster (about 20 seconds) but less careful. Use this provider for the full pipeline: with the results and limitations passages, a summary prompt is about 9,000–12,000 tokens, more than Groq's free tier allows per minute (8,000). If a model rejects `reasoning_effort`, add `--reasoning-effort none`.
    - Groq (default): `export GROQ_API_KEY=...`, free key at console.groq.com
    - Gemini: `export GEMINI_API_KEY=...`, free key at aistudio.google.com, then add `--provider gemini` to the commands below. Answers from a different model aren't directly comparable with the Groq benchmark runs, so save them to their own `--output` file.
 

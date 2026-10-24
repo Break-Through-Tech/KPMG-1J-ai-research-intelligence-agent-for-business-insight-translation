@@ -11,16 +11,20 @@ from pathlib import Path
 import pandas as pd
 
 from ..vectorizing.embedder import DEFAULT_MODEL, TextEmbedder
-from .store import open_index, search, update_index
+from .store import open_index, open_paper_table, search, update_index, update_paper_vectors
 
 
 def main():
     parser = argparse.ArgumentParser(description="build, update or search the chunk index")
     parser.add_argument("--chunks", default="data/chunks.parquet")
+    parser.add_argument("--papers", default="data/papers_clean.parquet",
+                        help="titles and abstracts for the paper vectors the retriever ranks papers by")
     parser.add_argument("--chunk-report", default="data/chunk_report.json", help="where the chunk settings are read from")
     parser.add_argument("--index-dir", default="data/index")
     parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--rebuild", action="store_true", help="delete the index and embed everything again")
+    parser.add_argument("--rebuild", action="store_true",
+                        help="delete the index and embed everything again. needs chunks for every paper, "
+                             "so run prepare_for_chunking without --skip-indexed first")
     parser.add_argument("--search", help="run a query instead of updating")
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--since", help="only papers published on or after this date (YYYY-MM-DD)")
@@ -36,6 +40,8 @@ def main():
     report = Path(args.chunk_report)
     chunk_config = json.loads(report.read_text())["config"] if report.exists() else None
     table = open_index(args.index_dir, embedder, chunk_config, rebuild=args.rebuild)
+    if args.rebuild:
+        open_paper_table(args.index_dir, embedder.model.get_embedding_dimension(), rebuild=True)
 
     if args.search:
         where = f"published_date >= '{args.since}'" if args.since else None
@@ -46,6 +52,14 @@ def main():
     max_seconds = args.max_minutes * 60 if args.max_minutes else None
     added = update_index(table, pd.read_parquet(args.chunks), embedder, args.index_dir, max_seconds=max_seconds)
     print(f"added {added:,} chunks, index now has {table.count_rows():,}")
+
+    # short texts, so this takes about a minute even when an older index has none yet
+    if Path(args.papers).exists():
+        papers = pd.read_parquet(args.papers, columns=["base_id", "version", "title", "abstract_clean"])
+        n = update_paper_vectors(args.index_dir, table, papers, embedder)
+        print(f"embedded {n:,} paper titles and abstracts")
+    else:
+        print(f"{args.papers} not found, skipping paper vectors (the retriever embeds them at startup instead)")
 
 
 if __name__ == "__main__":

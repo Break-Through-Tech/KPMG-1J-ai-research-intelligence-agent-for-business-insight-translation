@@ -5,11 +5,12 @@ This step turns the chunks into a searchable index. Each chunk gets an embedding
 ```
 papers_clean.parquet ──► prepare_for_chunking ──► chunk_input.jsonl ──► src/chunking ──► chunks.parquet ──► src/indexing ──► data/index/
                                                                                                           (embed + store)    chunks.lance/
+                                                                                                                             papers.lance/
                                                                                                                              index_manifest.json
 ```
 
 **files**
-- `store.py`: the table schema, `open_index`, `update_index` (embeds only new or changed papers) and `search`
+- `store.py`: the table schema, `open_index`, `update_index` (embeds only new or changed papers), `search`, and the paper vectors (`update_paper_vectors`, `load_paper_vectors`)
 - `manifest.py`: records the model and chunk settings the index was built with, and refuses to mix vectors built with different settings
 - `cli.py`: build, update or search from the command line
 - `tests/test_indexing.py`: unit tests (reopening, no re-embedding, version replacement, filters, hybrid search, settings check)
@@ -26,6 +27,16 @@ python -m src.chunking.cli                           # -> data/chunks.parquet
 python -m src.indexing.cli                           # -> data/index/ (only new or changed papers are embedded)
 python -m src.indexing.cli --search "how are companies evaluating LLM agents?" --since 2026-09-01
 ```
+
+To update an existing index, chunk only the papers it doesn't have yet (new papers, the backlog and newer versions), which is what the GitHub workflow does:
+
+```bash
+python -m src.preprocessing.prepare_for_chunking --skip-indexed data/index
+python -m src.chunking.cli
+python -m src.indexing.cli
+```
+
+`chunks.parquet` then holds only those papers, so leave out `--skip-indexed` before a `--rebuild`, which needs every paper's chunks.
 
 To use the published index instead of building one, download it from the latest release:
 
@@ -48,6 +59,7 @@ results = search(table, embedder, "retrieval augmented generation for audits", k
 | argument | default | description |
 |---|---|---|
 | `--chunks` | `data/chunks.parquet` | output of the chunking step |
+| `--papers` | `data/papers_clean.parquet` | titles and abstracts for the paper vectors (skipped with a message if the file is missing) |
 | `--chunk-report` | `data/chunk_report.json` | the chunk settings are read from here and recorded in the manifest |
 | `--index-dir` | `data/index` | where the LanceDB table and manifest live |
 | `--model` | `BAAI/bge-small-en-v1.5` | embedding model |
@@ -63,6 +75,7 @@ results = search(table, embedder, "retrieval augmented generation for audits", k
 - **similarity:** cosine. The vectors are normalized, so this ranks the same as dot product.
 - **no re-embedding:** `update_index` compares each paper's version in `chunks.parquet` with the index and only embeds papers that are new or have a newer version. A newer version's old rows are deleted first, so v1 and v2 never sit side by side.
 - **hybrid search (default):** combines vector similarity with a full-text (keyword) index on `text`, which helps with exact names like model names and acronyms. Pass `hybrid=False` for vector-only search.
+- **paper vectors:** a second table, `papers`, holds one vector per indexed paper for its title + abstract, which `LanceCombinedRetriever` ranks papers by. After the chunks are updated, `update_paper_vectors` embeds titles and abstracts only for indexed papers that have no vector yet or one from an older version (papers still in the backlog get theirs once they're indexed). An index built before this table existed gets every paper's vector on its next update, which takes about a minute.
 - **filters:** `where` is an SQL filter applied before ranking (`prefilter=True`), so you still get `k` results.
 - **manifest:** `index_manifest.json` records the model, vector size, metric and chunk settings, plus the chunk and paper counts and date range. Opening the index with different settings raises an error instead of silently mixing incompatible vectors.
 - **no approximate vector index yet:** under ~100k chunks LanceDB compares the query with every vector (exact and fast enough). Add an `IvfPq(distance_type="cosine")` index once the corpus is much larger.

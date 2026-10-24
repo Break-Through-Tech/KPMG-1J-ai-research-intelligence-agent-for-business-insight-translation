@@ -52,6 +52,14 @@ def run_chunking(input_path="data/chunk_input.jsonl", output_path="data/chunks.p
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     chunks.to_parquet(output_path, index=False)
 
+    if chunks.empty:
+        # nothing new (e.g. prepare_for_chunking --skip-indexed found every paper already indexed).
+        # the report still records the settings, since the index checks them
+        with open(report_path, "w") as f:
+            json.dump({"config": asdict(cfg), "sections_in": len(rows), "papers_chunked": 0, "chunks": 0}, f, indent=2)
+        print(f"no sections to chunk, wrote an empty {output_path} and {report_path}")
+        return chunks
+
     per_paper = chunks.groupby("paper_id").size()
     report = {
         "config": asdict(cfg),

@@ -22,6 +22,15 @@ PROVIDERS = {
         "key_variable": "GEMINI_API_KEY",
         "model": "gemini-3.8-flash",
     },
+    # free trial API at build.nvidia.com; large enough per-minute limits for the longer
+    # prompts with results and limitations passages, which Groq's free tier rejects.
+    # Nemotron Ultra kept numbers exact and cited every point in testing (~2 min a question);
+    # --model openai/gpt-oss-20b is faster (~20 s) but less careful
+    "nvidia": {
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "key_variable": "NVIDIA_API_KEY",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    },
 }
 
 DEFAULT_PROVIDER = "groq"
@@ -146,6 +155,12 @@ class LLM:
         from openai import RateLimitError
 
         for attempt in range(self.max_retries + 1):
+            # reasoning_effort=None leaves it out, for models that don't accept it
+            extra = (
+                {"reasoning_effort": self.reasoning_effort}
+                if self.reasoning_effort else {}
+            )
+
             try:
                 return self.client.chat.completions.create(
                     model=self.model,
@@ -155,7 +170,7 @@ class LLM:
                     ],
                     temperature=self.temperature,
                     max_completion_tokens=self.max_tokens,
-                    reasoning_effort=self.reasoning_effort
+                    **extra
                 )
 
             except RateLimitError as error:

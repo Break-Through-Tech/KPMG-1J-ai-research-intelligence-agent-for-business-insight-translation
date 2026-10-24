@@ -1,11 +1,13 @@
 # unit tests for src/chunking, run from the project root with: python -m pytest tests/
 # input rows follow the format of chunk_input.jsonl from prepare_for_chunking.py
 
+import json
+
 import pandas as pd
 import pytest
 
 from src.chunking.chunker import ChunkConfig, chunk_paper, count_tokens, merge_short_sections, split_sentences, window_text
-from src.chunking.pipeline import validate_chunks
+from src.chunking.pipeline import run_chunking, validate_chunks
 
 PROSE = ("Large language models are increasingly used for business analysis. "
          "We measure how often they agree with expert analysts on 1,200 filings. "
@@ -153,3 +155,15 @@ def test_empty_embedding_text_is_rejected():
     chunks.loc[0, "text_for_embedding"] = "   "
     with pytest.raises(ValueError, match="empty"):
         validate_chunks(chunks)
+
+
+def test_empty_input_writes_empty_chunks_and_keeps_the_settings(tmp_path):
+    # happens when prepare_for_chunking --skip-indexed finds every paper already indexed
+    (tmp_path / "chunk_input.jsonl").write_text("")
+    cfg = ChunkConfig(chunk_tokens=256)
+
+    chunks = run_chunking(str(tmp_path / "chunk_input.jsonl"), str(tmp_path / "chunks.parquet"),
+                          str(tmp_path / "report.json"), cfg)
+
+    assert chunks.empty and pd.read_parquet(tmp_path / "chunks.parquet").empty
+    assert json.loads((tmp_path / "report.json").read_text())["config"]["chunk_tokens"] == 256

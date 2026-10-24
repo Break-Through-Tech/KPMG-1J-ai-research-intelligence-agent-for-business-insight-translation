@@ -401,3 +401,28 @@ def test_real_gemini_per_minute_error_is_retried(monkeypatch):
 
     assert llm.generate("system", "user") == "Summary [2609.38107v1]"
     assert waits == [pytest.approx(14.364181756)]
+
+
+class RecordingCompletions(FlakyCompletions):
+    """Keeps the arguments of every request."""
+
+    def __init__(self):
+        super().__init__([])
+        self.kwargs = []
+
+    def create(self, **kwargs):
+        self.kwargs.append(kwargs)
+        return super().create(**kwargs)
+
+
+@pytest.mark.parametrize("effort, sent", [("low", {"reasoning_effort": "low"}), (None, {})])
+def test_reasoning_effort_is_left_out_when_none(monkeypatch, effort, sent):
+    # some models (e.g. on NVIDIA) reject the setting, so None must not send it at all
+    monkeypatch.setenv("NVIDIA_API_KEY", "test-key")
+    llm = LLM(provider="nvidia", reasoning_effort=effort)
+    completions = RecordingCompletions()
+    llm.client = type("Client", (), {"chat": type("Chat", (), {"completions": completions})})
+
+    llm.generate("system", "user")
+
+    assert {k: v for k, v in completions.kwargs[0].items() if k == "reasoning_effort"} == sent

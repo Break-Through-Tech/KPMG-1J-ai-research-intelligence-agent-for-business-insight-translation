@@ -103,12 +103,14 @@ def main():
         "--provider",
         choices=list(PROVIDERS),
         default=DEFAULT_PROVIDER,
-        help="LLM service: groq (GROQ_API_KEY) or gemini (GEMINI_API_KEY)"
+        help="LLM service: groq (GROQ_API_KEY), gemini (GEMINI_API_KEY) "
+             "or nvidia (NVIDIA_API_KEY, free key at build.nvidia.com)"
     )
 
     parser.add_argument(
         "--model",
-        help="defaults to openai/gpt-oss-120b on groq, gemini-3.8-flash on gemini"
+        help=", ".join(f"{name}: {settings['model']}" for name, settings in PROVIDERS.items())
+             + " by default"
     )
 
     parser.add_argument(
@@ -133,8 +135,9 @@ def main():
 
     parser.add_argument(
         "--reasoning-effort",
-        choices=["low", "medium", "high"],
-        default="low"
+        choices=["low", "medium", "high", "none"],
+        default="low",
+        help="none leaves the setting out, for models that don't accept it"
     )
 
     parser.add_argument(
@@ -160,7 +163,7 @@ def main():
         provider=args.provider,
         model=args.model,
         max_tokens=args.max_tokens,
-        reasoning_effort=args.reasoning_effort,
+        reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort,
         max_retries=args.max_retries
     )
 
