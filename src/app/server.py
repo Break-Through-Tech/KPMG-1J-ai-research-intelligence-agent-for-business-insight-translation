@@ -1,7 +1,7 @@
 # Web UI for consultants: ask a question, get a cited business brief.
 #
-# python -m src.app --provider nvidia    (needs NVIDIA_API_KEY, free at build.nvidia.com)
-# python -m src.app                      (Groq, needs GROQ_API_KEY; its free tier is too small
+# python -m src.app                      (NVIDIA, needs NVIDIA_API_KEY, free at build.nvidia.com)
+# python -m src.app --provider groq      (needs GROQ_API_KEY; its free tier is too small
 #                                         for the results and limitations passages)
 # python -m src.app --provider gemini    (needs GEMINI_API_KEY)
 # then open http://localhost:8000

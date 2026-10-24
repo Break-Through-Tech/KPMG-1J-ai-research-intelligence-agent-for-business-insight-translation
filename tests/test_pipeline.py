@@ -329,7 +329,7 @@ class FlakyCompletions:
 def make_llm(monkeypatch, errors, max_retries=5):
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
     waits = []
-    llm = LLM(max_retries=max_retries, sleep=waits.append)
+    llm = LLM(provider="groq", max_retries=max_retries, sleep=waits.append)
     completions = FlakyCompletions(errors)
     llm.client = type("Client", (), {"chat": type("Chat", (), {"completions": completions})})
     return llm, completions, waits
