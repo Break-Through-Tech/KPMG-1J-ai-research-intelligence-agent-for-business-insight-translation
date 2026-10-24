@@ -25,6 +25,13 @@ on:
       first_run_days:
         description: "Days to look back if no dataset has been published yet"
         default: "7"
+      skip_ingest:
+        description: "Skip pulling new papers and spend the run indexing (to catch up an index backlog)"
+        type: boolean
+        default: false
+      index_minutes:
+        description: "Minutes to spend embedding papers. Keep 90 for a normal run; up to 240 with skip ingest"
+        default: "90"
 
 permissions:
   contents: write      # needed to create releases, uses GitHub's built-in token so no secrets are required
@@ -84,6 +91,7 @@ jobs:
 
       - name: Pull new papers
         id: update
+        if: ${{ !inputs.skip_ingest }}
         # stop ingesting with time to spare, so the steps below still index and publish everything saved so far
         timeout-minutes: 180
         run: ./scripts/pull_recent_papers.sh --delete-pdfs
@@ -102,19 +110,20 @@ jobs:
       - name: Chunk and index new papers
         # chunk_input and chunks are rebuilt from papers_clean every run (minutes), but the index
         # only embeds papers that are new or have a newer version, so the rest is reused.
-        # embedding runs on CPU (~1,000 papers an hour), so it stops after 90 minutes and saves what it
-        # has; the leftover papers (backlog_papers in the manifest) are picked up by the next run.
+        # embedding runs on CPU (~800 papers an hour), so it stops after index_minutes (90 by default) and
+        # saves what it has; the leftover papers (backlog_papers in the manifest) are picked up by the next run.
         # runs even when no papers were added, so a backlog keeps shrinking.
+        # a manual run with skip_ingest has the whole job's time, so it can take a much longer limit.
         # if this fails, the publish step below still runs and re-publishes the previous index
         if: ${{ !cancelled() && hashFiles('data/papers_clean.parquet') != '' }}
         id: index
-        timeout-minutes: 110
+        timeout-minutes: ${{ inputs.skip_ingest && 290 || 110 }}
         run: |
           # so a crash in the indexer isn't hidden by the tee below
           set -o pipefail
           python -m src.preprocessing.prepare_for_chunking
           python -m src.chunking.cli
-          python -m src.indexing.cli --max-minutes 90 | tee index.log
+          python -m src.indexing.cli --max-minutes "${{ inputs.index_minutes || '90' }}" | tee index.log
           # "added N chunks" from the last line; 0 means the index didn't change
           echo "indexed=$(sed -n 's/^added \([0-9,]*\) chunks.*/\1/p' index.log | tr -d , | tail -1)" >> "$GITHUB_OUTPUT"
           # smoke test: the updated index loads and answers a query
@@ -134,7 +143,9 @@ jobs:
           backlog = "${{ steps.update.outputs.backlog }}"
           if backlog and backlog != "0":
               print(f"\n**Backlog:** {backlog} more papers will be picked up by the next run.")
-          if "${{ steps.update.outcome }}" != "success":
+          if "${{ steps.update.outcome }}" == "skipped":
+              print("\n**Note:** index catch-up run, no new papers were pulled.")
+          elif "${{ steps.update.outcome }}" != "success":
               print("\n**Note:** the ingest step stopped early (${{ steps.update.outcome }}); everything saved before that is included, the next run continues from here.")
           if "${{ steps.index.outcome }}" == "success":
               m = json.load(open("data/index/index_manifest.json"))
