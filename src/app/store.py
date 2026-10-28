@@ -48,12 +48,16 @@ class BriefStore:
             except (OSError, json.JSONDecodeError):
                 continue
 
+            entry = record.get("briefs", {}).get(record.get("audience")) or {}
+
             records.append({
                 "id": record["id"],
                 "query": record["query"],
                 "audience": record.get("audience"),
                 "status": record.get("status", "draft"),
                 "created_at": record.get("created_at"),
+                "papers": len(record.get("sources", [])),
+                "evidence": entry.get("checks", {}).get("evidence", {}).get("level"),
             })
 
         return records

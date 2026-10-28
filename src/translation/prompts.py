@@ -286,3 +286,77 @@ IMPORTANT CHECKS:
 """
 
     return prompt
+
+
+# Follow-up questions on a brief: one LLM call that answers from the saved
+# research summary only (no new retrieval). When the summary can't answer,
+# the reply starts with NOT_COVERED so the UI can offer a new search.
+NOT_COVERED = "Not covered:"
+
+# Earlier follow-ups sent as context, newest last
+FOLLOWUP_HISTORY = 3
+
+FOLLOWUP_SYSTEM_PROMPT = f"""
+You are an advisor answering a follow-up question about a business brief
+on AI research.
+
+You will receive the original business question, the research summary
+the brief was written from, the brief itself, and the follow-up question.
+
+1. Use ONLY the research summary as evidence. The brief shows what was
+   already said; do not treat it as a source of new facts. Do not add
+   facts, numbers, model names, costs, timelines, or papers that are not
+   in the summary.
+2. Repeat numbers exactly as the summary writes them, and keep what each
+   number measures.
+3. Cite the paper ID in square brackets, e.g. [2609.38107v1], after every
+   claim taken from the summary. Cite only paper IDs in the summary.
+4. Keep the summary's warnings and limitations when they matter to the
+   answer.
+5. If the summary does not answer the follow-up, start your reply with
+   "{NOT_COVERED}" and say in one or two sentences what the research
+   would need to show. Do not guess. If it answers only part, answer that
+   part and say what is missing.
+6. Write for the stated audience, in plain English, in at most 120 words.
+   Use short paragraphs or up to 3 "- " bullets. No headings.
+"""
+
+
+def build_followup_prompt(query, summary, brief, followup,
+                          audience=DEFAULT_AUDIENCE, history=()):
+    """
+    Build the user prompt for a follow-up question.
+
+    history: earlier follow-ups on the same brief, each {"question", "answer"};
+             only the last FOLLOWUP_HISTORY are included
+    """
+
+    if not isinstance(followup, str) or not followup.strip():
+        raise ValueError("Follow-up question cannot be empty.")
+
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("Research summary cannot be empty.")
+
+    if audience not in AUDIENCES:
+        raise ValueError(
+            f"Unknown audience {audience!r}, choose from {', '.join(AUDIENCES)}"
+        )
+
+    prompt = "Audience: " + AUDIENCES[audience] + "\n\n"
+    prompt += "Original Business Question:\n" + query + "\n\n"
+    prompt += "Research Summary:\n" + summary + "\n\n"
+    prompt += "Business Brief:\n" + (brief or "(none)") + "\n\n"
+
+    earlier = list(history)[-FOLLOWUP_HISTORY:]
+    if earlier:
+        prompt += "Earlier Follow-ups:\n"
+        for item in earlier:
+            prompt += "Q: " + item["question"] + "\nA: " + item["answer"] + "\n\n"
+
+    prompt += "Follow-up Question:\n" + followup.strip() + "\n\n"
+    prompt += (
+        "Answer using only the research summary, with citations. "
+        f'If it does not answer the question, start with "{NOT_COVERED}"'
+    )
+
+    return prompt

@@ -16,7 +16,10 @@ from src.summarization.prompts import (
 from src.translation.prompts import (
     BUSINESS_SYSTEM_PROMPT,
     DEFAULT_AUDIENCE,
-    build_business_prompt
+    FOLLOWUP_SYSTEM_PROMPT,
+    NOT_COVERED,
+    build_business_prompt,
+    build_followup_prompt
 )
 
 
@@ -126,23 +129,58 @@ def translate_summary(query, summary, papers, llm, audience=DEFAULT_AUDIENCE):
 
     brief = llm.generate(BUSINESS_SYSTEM_PROMPT, prompt)
 
-    check = check_citations(brief, papers)
+    return {
+        "audience": audience,
+        "brief": brief,
+        "truncated": getattr(llm, "last_finish_reason", None) == "length",
+        "citation_check": check_against_summary(brief, summary, papers)
+    }
+
+
+def check_against_summary(text, summary, papers):
+    """
+    check_citations, plus cited_not_in_summary: papers the text cites that the
+    summary never did. Text written only from the summary should leave it empty.
+    """
+
+    check = check_citations(text, papers)
     summary_cited = set(check_citations(summary, papers)["cited"])
 
     check["cited_not_in_summary"] = [
         paper_id for paper_id in check["cited"] if paper_id not in summary_cited
     ]
 
+    return check
+
+
+def answer_followup(query, summary, brief, papers, followup, llm,
+                    audience=DEFAULT_AUDIENCE, history=()):
+    """
+    Answer a follow-up question about a brief from its saved research summary
+    (one LLM call, no new retrieval). covered is False when the summary doesn't
+    answer it, so the UI can offer a new search instead.
+    history: earlier {"question", "answer"} follow-ups on the same brief.
+    """
+
+    if not isinstance(followup, str) or not followup.strip():
+        raise ValueError("Please type a follow-up question.")
+
+    prompt = build_followup_prompt(query, summary, brief, followup.strip(),
+                                   audience, history)
+
+    answer = llm.generate(FOLLOWUP_SYSTEM_PROMPT, prompt).strip()
+
     return {
-        "audience": audience,
-        "brief": brief,
+        "question": followup.strip(),
+        "answer": answer,
+        "covered": not answer.lower().startswith(NOT_COVERED.lower()),
         "truncated": getattr(llm, "last_finish_reason", None) == "length",
-        "citation_check": check
+        "citation_check": check_against_summary(answer, summary, papers)
     }
 
 
 def answer_query(query, retriever, llm, top_k=5, translate=True,
-                 audience=DEFAULT_AUDIENCE):
+                 audience=DEFAULT_AUDIENCE, filters=None):
     """
     Run one question through retrieval, summarization and (unless
     translate=False) business translation.
@@ -150,12 +188,17 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
     retriever: anything with search(query, top_k) returning paper dicts
                (see src/rag/README_combined_retriever.md)
     llm:       anything with generate(system_prompt, user_prompt)
+    filters:   optional {"since", "until", "categories"} for retrievers that
+               support them (src/rag/lance_retriever.py)
     """
 
     if not isinstance(query, str) or not query.strip():
         raise ValueError("Query cannot be empty")
 
-    papers = retriever.search(query, top_k=top_k)
+    if filters:
+        papers = retriever.search(query, top_k=top_k, filters=filters)
+    else:
+        papers = retriever.search(query, top_k=top_k)
 
     # Nothing to summarize, so don't ask the LLM to make something up
     if not papers:

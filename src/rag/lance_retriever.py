@@ -14,6 +14,7 @@ import re
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 from src.indexing.store import load_paper_vectors, open_index, paper_text, search as index_search
 from src.preprocessing.metadata import split_version
@@ -26,6 +27,59 @@ PASSAGES = [
     ("results", [("results", "experiments")]),
     ("limitations", [("limitations",), ("conclusion",)]),
 ]
+
+
+# Filters the UI can send: {"since": "YYYY-MM-DD", "until": "YYYY-MM-DD", "categories": ["cs.CL"]}
+DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+CATEGORY_PATTERN = re.compile(r"^[A-Za-z-]+(\.[A-Za-z-]+)?$")
+
+
+def clean_filters(filters):
+    """
+    Check the filters and return them in a fixed shape, or None when none are set.
+    Raises ValueError on a bad date or category, since they go into a where clause.
+    """
+    if not filters:
+        return None
+
+    since = filters.get("since") or None
+    until = filters.get("until") or None
+
+    for date in (since, until):
+        if date is not None and not (isinstance(date, str) and DATE_PATTERN.match(date)):
+            raise ValueError(f"Dates must look like 2026-10-05, not {date!r}.")
+
+    if since and until and since > until:
+        raise ValueError("The start date is after the end date.")
+
+    categories = list(filters.get("categories") or [])
+
+    for category in categories:
+        if not (isinstance(category, str) and CATEGORY_PATTERN.match(category)):
+            raise ValueError(f"Unknown category {category!r}.")
+
+    if not (since or until or categories):
+        return None
+
+    return {"since": since, "until": until, "categories": categories}
+
+
+def filter_clause(filters):
+    """LanceDB where clause for the chunk search, or None when there are no filters."""
+    filters = clean_filters(filters)
+    if not filters:
+        return None
+
+    parts = []
+    # dates are stored as "YYYY-MM-DD" text, which compares correctly as text
+    if filters["since"]:
+        parts.append(f"published_date >= '{filters['since']}'")
+    if filters["until"]:
+        parts.append(f"published_date <= '{filters['until']}'")
+    if filters["categories"]:
+        parts.append(f"primary_category IN ({_quoted(filters['categories'])})")
+
+    return " AND ".join(parts)
 
 
 def base_id(paper_id):
@@ -116,9 +170,13 @@ class LanceRetriever:
             .to_pandas()["paper_id"]
         )
 
-        papers = pd.read_parquet(
-            papers_path, columns=["arxiv_id", "title", "abstract_clean"]
-        )
+        # dates and categories are only needed for filters, and older files may not have them
+        available = set(pq.read_schema(papers_path).names)
+        columns = ["arxiv_id", "title", "abstract_clean"] + [
+            c for c in ("published_date", "primary_category") if c in available
+        ]
+
+        papers = pd.read_parquet(papers_path, columns=columns)
         papers["base_id"] = papers["arxiv_id"].map(base_id)
 
         missing = indexed - set(papers["base_id"])
@@ -136,6 +194,13 @@ class LanceRetriever:
         papers["title"] = papers["title"].fillna("").astype(str)
         papers["abstract_clean"] = papers["abstract_clean"].fillna("").astype(str)
 
+        if "published_date" in papers:
+            # same "YYYY-MM-DD" text as the index, whatever type the file stores
+            papers["published_date"] = (
+                pd.to_datetime(papers["published_date"], errors="coerce")
+                .dt.strftime("%Y-%m-%d").fillna("")
+            )
+
         return papers.set_index("base_id").sort_index()
 
     def _search_chunks(self, query, vector, k, where=None):
@@ -144,7 +209,7 @@ class LanceRetriever:
             hybrid=self.hybrid, vector=vector
         )
 
-    def _best_chunks(self, query, vector):
+    def _best_chunks(self, query, vector, where=None):
         """
         From one chunk search, in rank order:
         best:     each paper's best chunk, which ranks the papers
@@ -154,7 +219,7 @@ class LanceRetriever:
         best = {}
         evidence = {}
 
-        for row in self._search_chunks(query, vector, self.chunk_pool):
+        for row in self._search_chunks(query, vector, self.chunk_pool, where=where):
             best.setdefault(row["paper_id"], row)
             if row.get("section_type") != "abstract":
                 evidence.setdefault(row["paper_id"], row)
@@ -237,12 +302,42 @@ class LanceRetriever:
         if not isinstance(top_k, int) or not 1 <= top_k <= limit:
             raise ValueError(f"top_k must be an integer from 1 to {limit}.")
 
-    def search(self, query, top_k=5):
-        """Return the top papers with their best supporting chunk."""
+    def paper_mask(self, filters):
+        """True for each paper (in self.papers order) that passes the filters."""
+        filters = clean_filters(filters)
+        mask = np.ones(len(self.papers), dtype=bool)
+
+        if not filters:
+            return mask
+
+        dated = filters["since"] or filters["until"]
+        if (dated and "published_date" not in self.papers) or (
+            filters["categories"] and "primary_category" not in self.papers
+        ):
+            raise ValueError(
+                "This papers file has no dates or categories, so it can't be filtered. "
+                "Use a newer papers_clean.parquet."
+            )
+
+        if filters["since"]:
+            mask &= (self.papers["published_date"] >= filters["since"]).to_numpy()
+        if filters["until"]:
+            mask &= (self.papers["published_date"] <= filters["until"]).to_numpy()
+        if filters["categories"]:
+            mask &= self.papers["primary_category"].isin(filters["categories"]).to_numpy()
+
+        return mask
+
+    def search(self, query, top_k=5, filters=None):
+        """
+        Return the top papers with their best supporting chunk.
+        filters: optional {"since", "until", "categories"} (see clean_filters)
+        """
         self._check_top_k(query, top_k, self.chunk_pool)
+        where = filter_clause(filters)
 
         vector = self.embedder.embed_query(query)
-        best, evidence = self._best_chunks(query, vector)
+        best, evidence = self._best_chunks(query, vector, where)
 
         results = []
 
@@ -312,23 +407,31 @@ class LanceCombinedRetriever(LanceRetriever):
 
         return vectors
 
-    def _rank_papers(self, query_vector):
-        """Rank papers by title/abstract cosine similarity."""
+    def _rank_papers(self, query_vector, mask=None):
+        """Rank papers by title/abstract cosine similarity, only those in mask if given."""
         similarities = self.paper_vectors @ query_vector
 
-        positions = np.argsort(-similarities, kind="stable")[:self.paper_candidates]
+        positions = np.argsort(-similarities, kind="stable")
+        if mask is not None:
+            positions = positions[mask[positions]]
+        positions = positions[:self.paper_candidates]
 
         return [self.paper_ids[position] for position in positions]
 
-    def search(self, query, top_k=5):
-        """Return ranked papers, metadata, and supporting passages."""
+    def search(self, query, top_k=5, filters=None):
+        """
+        Return ranked papers, metadata, and supporting passages.
+        filters: optional {"since", "until", "categories"} (see clean_filters)
+        """
         self._check_top_k(query, top_k, self.paper_candidates)
+        where = filter_clause(filters)
+        mask = self.paper_mask(filters) if where else None
 
         vector = self.embedder.embed_query(query)
 
-        best, evidence = self._best_chunks(query, vector)
+        best, evidence = self._best_chunks(query, vector, where)
 
-        paper_ranking = self._rank_papers(vector)
+        paper_ranking = self._rank_papers(vector, mask)
         chunk_ranking = list(best)[:self.paper_candidates]
 
         ranking, scores = rrf_merge(

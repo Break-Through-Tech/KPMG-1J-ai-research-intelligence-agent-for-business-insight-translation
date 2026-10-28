@@ -7,7 +7,8 @@
 # then open http://localhost:8000
 #
 # LLM calls per action: ask = 2, rewrite for another audience = 1,
-# everything else (open, approve, request changes, copy link) = 0.
+# follow-up question = 1, everything else (open, approve, request changes,
+# copy link, copy for email/Slack) = 0.
 
 import argparse
 import threading
@@ -19,7 +20,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from src.pipeline.pipeline import answer_query, translate_summary
+from src.pipeline.pipeline import answer_followup, answer_query, translate_summary
 from src.translation.prompts import AUDIENCES, DEFAULT_AUDIENCE
 
 from .checks import run_checks
@@ -40,6 +41,14 @@ class AskRequest(BaseModel):
     question: str
     audience: str = DEFAULT_AUDIENCE
     top_k: int = 5
+    # optional filters: "YYYY-MM-DD" dates and arXiv primary categories
+    since: str | None = None
+    until: str | None = None
+    categories: list[str] = []
+
+
+class FollowupRequest(BaseModel):
+    question: str
 
 
 class StatusRequest(BaseModel):
@@ -122,9 +131,17 @@ def create_app(retriever, llm, store, corpus=None, examples=None):
         if not 1 <= request.top_k <= MAX_PAPERS:
             raise HTTPException(400, f"Papers per answer must be between 1 and {MAX_PAPERS}.")
 
+        filters = {
+            "since": request.since or None,
+            "until": request.until or None,
+            "categories": request.categories,
+        }
+        if not any(filters.values()):
+            filters = None
+
         result = run_llm(lambda: answer_query(
             question, retriever, llm, top_k=request.top_k,
-            translate=True, audience=request.audience,
+            translate=True, audience=request.audience, filters=filters,
         ))
 
         insight = result.pop("business_insight")
@@ -139,8 +156,10 @@ def create_app(retriever, llm, store, corpus=None, examples=None):
             "model": getattr(llm, "model", ""),
             "status": "draft",
             "note": "",
+            "filters": filters or {},
             **result,
             "briefs": {},
+            "followups": [],
         }
 
         if insight:
@@ -149,8 +168,8 @@ def create_app(retriever, llm, store, corpus=None, examples=None):
         return store.save(record)
 
     @app.get("/api/briefs")
-    def list_briefs():
-        return store.list()
+    def list_briefs(limit: int = 20):
+        return store.list(limit=max(1, min(limit, 500)))
 
     @app.get("/api/briefs/{brief_id}")
     def get_brief(brief_id: str):
@@ -186,6 +205,28 @@ def create_app(retriever, llm, store, corpus=None, examples=None):
         record["note"] = ""
         return store.save(record)
 
+    @app.post("/api/briefs/{brief_id}/followup")
+    def followup(brief_id: str, request: FollowupRequest):
+        question = request.question.strip()
+        if not question:
+            raise HTTPException(400, "Please type a follow-up question.")
+
+        record = load(brief_id)
+        entry = record["briefs"].get(record["audience"])
+
+        if not record["sources"] or not entry:
+            raise HTTPException(400, "This question has no research summary to answer from.")
+
+        # Answers from the saved summary, so this is one LLM call and no new search
+        followups = record.setdefault("followups", [])
+        answer = run_llm(lambda: answer_followup(
+            record["query"], record["summary"], entry["brief"], record["sources"],
+            question, llm, record["audience"], history=followups,
+        ))
+
+        followups.append({**answer, "audience": record["audience"], "created_at": now()})
+        return store.save(record)
+
     @app.get("/")
     def index():
         return FileResponse(STATIC_DIR / "index.html")
@@ -198,13 +239,26 @@ def create_app(retriever, llm, store, corpus=None, examples=None):
 def corpus_info(papers_path):
     import pandas as pd
 
-    dates = pd.read_parquet(papers_path, columns=["published_date"])["published_date"]
-    dates = pd.to_datetime(dates)
+    import pyarrow.parquet as pq
+
+    columns = ["published_date"]
+    if "primary_category" in pq.read_schema(papers_path).names:
+        columns.append("primary_category")
+
+    papers = pd.read_parquet(papers_path, columns=columns)
+    dates = pd.to_datetime(papers["published_date"])
+
+    # topics the ask page can filter by, most papers first
+    categories = (
+        papers["primary_category"].value_counts().items()
+        if "primary_category" in papers else []
+    )
 
     return {
         "papers": int(len(dates)),
         "first_date": dates.min().date().isoformat(),
         "last_date": dates.max().date().isoformat(),
+        "categories": [{"id": c, "papers": int(n)} for c, n in categories],
     }
 
 

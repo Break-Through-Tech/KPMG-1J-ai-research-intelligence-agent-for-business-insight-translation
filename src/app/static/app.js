@@ -1,43 +1,86 @@
-// Research Insight Agent UI: one page, two views (#/ ask, #/brief/<id>).
+// Research Insight Agent UI: one page, hash routes
+//   #/            Home (ask a question)
+//   #/brief/<id>  a saved brief (Brief / Research summary / Sources / Review tabs);
+//                 #/brief/<id>/review opens a tab directly
+//   #/research    the most recent brief
+//   #/library     every saved brief
+//   #/review      briefs waiting for review or with changes requested
 // All LLM output is HTML-escaped before it is formatted.
 
 const AUDIENCES = {
   executive: {
     label: "Executive",
-    hint: "Business leaders with no technical background: decisions, risk, cost, trust and reputation.",
+    hint: "Executive: decisions, business risk, cost, trust and reputation, with no technical background assumed.",
   },
   risk: {
     label: "Risk & compliance",
-    hint: "Risk, compliance and audit teams: controls, governance, testing, monitoring and what could go wrong.",
+    hint: "Risk & compliance: controls, governance, testing, monitoring and what could go wrong.",
   },
   technical: {
     label: "Technical lead",
-    hint: "Technical leads deciding whether to adopt: what to build or test, and how mature the methods are.",
+    hint: "Technical lead: what to build or test, and how mature the methods are.",
   },
 };
 
 const STATUS = {
-  draft: { pill: "Awaiting review", title: "Awaiting advisor review", sub: "Not for client use until a KPMG reviewer approves it." },
-  approved: { pill: "Approved", title: "Approved", sub: "Reviewed and cleared for internal and client conversations." },
-  changes: { pill: "Changes requested", title: "Changes requested", sub: "Sent back with reviewer notes. Regenerate the brief or ask a sharper question." },
+  draft: { pill: "Awaiting review", cls: "status--review", sub: "Not for client use until a KPMG reviewer approves it." },
+  approved: { pill: "Approved", cls: "status--ok", sub: "Reviewed and cleared for internal and client conversations." },
+  changes: { pill: "Changes requested", cls: "status--changes", sub: "Sent back with reviewer notes. Regenerate the brief or ask a sharper question." },
 };
 
+// arXiv primary categories shown as topic filters, in plain words
+const TOPIC_LABELS = {
+  "cs.AI": "AI",
+  "cs.CL": "Language",
+  "cs.LG": "Machine learning",
+  "cs.CV": "Vision",
+  "cs.CR": "Security",
+  "cs.RO": "Robotics",
+  "cs.SE": "Software engineering",
+  "cs.HC": "Human–computer",
+  "cs.IR": "Search & retrieval",
+  "cs.MA": "Multi-agent",
+  "cs.CY": "Society",
+  "stat.ML": "Statistics ML",
+  "cs.SD": "Sound",
+};
+const MAX_TOPICS = 8;
+
+const PUBLISHED = [
+  ["any", "Any time"],
+  ["7", "Last 7 days"],
+  ["14", "Last 14 days"],
+  ["custom", "Since a date…"],
+];
+
 const SUMMARY_LABELS = ["Research Objective", "Methodology", "Key Findings", "Limitations"];
+
+const TABS = [
+  ["brief", "Brief"],
+  ["summary", "Research summary"],
+  ["sources", "Sources"],
+  ["review", "Review"],
+];
 
 const state = {
   info: null,
   audience: "executive",
   topK: 5,
   question: "",
+  filters: { published: "any", since: "", categories: [] },
   busy: false,
   error: "",
-  record: null,      // brief currently open
-  view: null,        // audience of the brief being shown
+  autoAsk: false,     // ask as soon as Home renders (search from the brief page)
+  briefs: [],         // saved brief list, for the review count and Research link
+  record: null,       // brief currently open
+  view: null,         // audience of the brief being shown
   tab: "brief",
-  noteOpen: false,
+  followup: "",
+  followupBusy: false,
 };
 
 const app = document.getElementById("app");
+const topbar = document.getElementById("topbar");
 
 // ---------- helpers ----------
 
@@ -73,6 +116,15 @@ function toast(message) {
   toast.timer = setTimeout(() => el.classList.remove("show"), 2200);
 }
 
+async function copyText(text, done) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(done);
+  } catch {
+    toast("Couldn’t reach the clipboard. Try again from a focused tab.");
+  }
+}
+
 function formatDate(iso, withYear = true) {
   if (!iso) return "";
   const date = new Date(iso.length === 10 ? iso + "T00:00:00Z" : iso);
@@ -81,16 +133,58 @@ function formatDate(iso, withYear = true) {
   });
 }
 
-function icon(kind) {
-  if (kind === "ok") {
-    return '<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#0B6B3A" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="9"></circle><path d="M7 11.5l3 3 5-6"></path></svg>';
-  }
-  const color = kind === "bad" ? "#A1251B" : "#8A4B08";
-  return `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="${color}" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="9"></circle><path d="M11 6v6M11 15.5v.5"></path></svg>`;
+function corpus() {
+  return (state.info && state.info.corpus) || {};
 }
 
-const ARROW = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9h12M10 4l5 5-5 5"></path></svg>';
-const BACK = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M13 8H3M7 4L3 8l4 4"></path></svg>';
+function indexedText(long = true) {
+  const c = corpus();
+  if (!c.papers) return state.info ? "Corpus not loaded" : "Loading…";
+  const count = `${c.papers.toLocaleString("en-US")} papers indexed${long ? " from arXiv" : ""}`;
+  return long ? `${count} · ${formatDate(c.first_date, false)} – ${formatDate(c.last_date)}` : count;
+}
+
+function topicLabel(id) {
+  return TOPIC_LABELS[id] || id;
+}
+
+function icon(kind) {
+  if (kind === "ok") {
+    return '<svg viewBox="0 0 22 22" fill="none" stroke="#0B6B3A" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="9"></circle><path d="M7 11.5l3 3 5-6"></path></svg>';
+  }
+  const color = kind === "bad" ? "#A1251B" : "#8A4B08";
+  return `<svg viewBox="0 0 22 22" fill="none" stroke="${color}" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="9"></circle><path d="M11 6v6M11 15.5v.5"></path></svg>`;
+}
+
+const ARROW = '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 9h12M10 4l5 5-5 5"></path></svg>';
+const SEARCH = (cls) => `<svg class="search-icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>`;
+
+// ---------- filters ----------
+
+// {since, categories} for /api/ask; "Last 7 days" counts back from the newest paper, not today
+function filterPayload() {
+  const f = state.filters;
+  let since = null;
+
+  if (f.published === "custom") {
+    since = f.since || null;
+  } else if (f.published !== "any" && corpus().last_date) {
+    const date = new Date(corpus().last_date + "T00:00:00Z");
+    date.setUTCDate(date.getUTCDate() - (Number(f.published) - 1));
+    since = date.toISOString().slice(0, 10);
+  }
+
+  return { since, categories: [...f.categories] };
+}
+
+function filtersText(filters) {
+  if (!filters) return "";
+  const parts = [];
+  if (filters.since) parts.push(`Since ${formatDate(filters.since, false)}`);
+  if (filters.until) parts.push(`Until ${formatDate(filters.until, false)}`);
+  if (filters.categories && filters.categories.length) parts.push(filters.categories.map(topicLabel).join(", "));
+  return parts.join(" · ");
+}
 
 // ---------- formatting LLM output ----------
 
@@ -98,20 +192,30 @@ const BACK = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke
 const CITE = /\[(\d{4}\.\d{4,5}(?:v\d+)?(?:\s*[,;]\s*\d{4}\.\d{4,5}(?:v\d+)?)*)\]/g;
 const BARE_ID = /\b(\d{4}\.\d{4,5})(?:v\d+)?\b/g;
 
+function sourceNumber(id, sources) {
+  return sources.findIndex((s) => baseId(s.paper_id) === baseId(id)) + 1;
+}
+
 function citeLink(id, sources) {
-  const index = sources.findIndex((s) => baseId(s.paper_id) === baseId(id));
-  if (index === -1) {
-    return `<span class="cite" style="color: var(--red)" title="Not in the retrieved papers">[${esc(id)}?]</span>`;
+  const n = sourceNumber(id, sources);
+  if (!n) {
+    return `<span class="cite cite--missing" title="Not in the retrieved papers">[${esc(id)}?]</span>`;
   }
-  const title = esc(sources[index].title);
-  return `<a class="cite" href="#src-${index + 1}" data-src="${index + 1}" title="${title} (${esc(baseId(id))})">[${index + 1}]</a>`;
+  const title = esc(sources[n - 1].title);
+  return `<a class="cite" href="#src-${n}" data-src="${n}" title="${title} (${esc(baseId(id))})">[${n}]</a>`;
+}
+
+// The ids inside one [...] group, without repeats
+function citeIds(group) {
+  const seen = new Set();
+  return group.split(/\s*[,;]\s*/).filter((id) => !seen.has(baseId(id)) && seen.add(baseId(id)));
 }
 
 function inline(text, sources) {
   // text is already escaped
   return text
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(CITE, (_, ids) => ids.split(/\s*[,;]\s*/).map((id) => citeLink(id, sources)).join(""));
+    .replace(CITE, (_, ids) => citeIds(ids).map((id) => citeLink(id, sources)).join(""));
 }
 
 // Split our fixed output format into [{heading, lines}] sections
@@ -143,10 +247,9 @@ function splitSections(text, labels) {
 }
 
 // Paragraphs and "- " bullet lists; wrapped lines join the item above
-function renderBody(lines, sources) {
+function blocksOf(lines) {
   const blocks = [];
   let block = null;
-
   const close = () => { if (block) blocks.push(block); block = null; };
 
   for (const raw of lines) {
@@ -164,8 +267,11 @@ function renderBody(lines, sources) {
     }
   }
   close();
+  return blocks;
+}
 
-  return blocks.map((b) => b.type === "ul"
+function renderBody(lines, sources) {
+  return blocksOf(lines).map((b) => b.type === "ul"
     ? "<ul>" + b.items.map((item) => `<li>${inline(esc(item), sources)}</li>`).join("") + "</ul>"
     : `<p>${inline(esc(b.text), sources)}</p>`).join("");
 }
@@ -173,162 +279,320 @@ function renderBody(lines, sources) {
 function renderSourcesSection(lines, sources) {
   const ids = [...new Set(lines.join(" ").match(BARE_ID) || [])];
   if (!ids.length) return renderBody(lines, sources);
-  return "<p>" + ids.map((id) => `${citeLink(id, sources)} <span class="source-id">${esc(id)}</span>`).join(" &nbsp; ") + "</p>";
+  return `<p class="source-id-list">${ids.map((id) => `${citeLink(id, sources)} ${esc(id)}`).join(" &nbsp; ")}</p>`;
 }
 
-function renderDoc(text, sources, labels) {
+function meter(level) {
+  const index = ["Low", "Medium", "High"].indexOf(level);
+  if (index === -1) return "";
+  return `<div class="meter" role="img" aria-label="Evidence strength: ${esc(level)}, on a scale of Low, Medium, High">
+    <div class="meter-bars">${[0, 1, 2].map((i) => `<span${i <= index ? ' class="on"' : ""}></span>`).join("")}</div>
+    <div class="meter-labels">${["Low", "Medium", "High"].map((l, i) => `<span${i === index ? ' class="on"' : ""}>${l}</span>`).join("")}</div>
+  </div>`;
+}
+
+function renderDoc(text, sources, labels, evidenceLevel) {
   return splitSections(text, labels).map((section) => {
     const name = section.heading.toLowerCase();
     const cls = name === "bottom line" ? ' class="bottom-line"' : "";
     let body = name === "sources" ? renderSourcesSection(section.lines, sources) : renderBody(section.lines, sources);
     if (name === "evidence strength") {
-      body = body.replace(/^<p>(High|Medium|Low)([.:]?)/, "<p><strong>$1$2</strong>");
+      body = meter(evidenceLevel) + body.replace(/^<p>(High|Medium|Low)([.:]?)/, "<p><strong>$1$2</strong>");
     }
     const heading = section.heading ? `<h2>${esc(section.heading)}</h2>` : "";
     return `<section${cls}>${heading}${body}</section>`;
   }).join("");
 }
 
-// ---------- ask view ----------
-
-function exampleCards() {
-  const examples = (state.info && state.info.examples) || [];
-  if (!examples.length) return "";
-  return `
-    <section class="stack" aria-labelledby="examples-h">
-      <h2 id="examples-h" class="eyebrow">Try a question from our benchmark</h2>
-      <div class="grid">
-        ${examples.map((q, i) => `<button type="button" class="example" data-example="${i}">${esc(q)}</button>`).join("")}
-      </div>
-    </section>`;
+// Bottom Line as plain text, for the page lede
+function bottomLine(brief) {
+  const section = splitSections(brief).find((s) => s.heading.toLowerCase() === "bottom line");
+  if (!section) return "";
+  return section.lines.join(" ").replace(CITE, "").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
 }
 
+// ---------- copy for email / Slack ----------
+
+function briefAsText(record, entry, format) {
+  const slack = format === "slack";
+  const sources = record.sources;
+
+  const clean = (text) => text
+    .replace(CITE, (_, ids) => citeIds(ids).map((id) => {
+      const n = sourceNumber(id, sources);
+      return n ? `[${n}]` : `[${id}]`;
+    }).join(""))
+    .replace(/\*\*(.+?)\*\*/g, slack ? "*$1*" : "$1");
+
+  const heading = (text) => (slack ? `*${text}*` : text.toUpperCase());
+  const out = [];
+
+  out.push(slack ? `*${record.query}*` : record.query);
+  if (record.status !== "approved") out.push("Draft, awaiting KPMG review. Not for client use.");
+  out.push(`Written for: ${(AUDIENCES[state.view] || { label: state.view }).label}`);
+
+  for (const section of splitSections(entry.brief)) {
+    if (section.heading.toLowerCase() === "sources") continue;
+    out.push("");
+    if (section.heading) out.push(heading(section.heading));
+    for (const block of blocksOf(section.lines)) {
+      if (block.type === "ul") block.items.forEach((item) => out.push(`${slack ? "•" : "-"} ${clean(item)}`));
+      else out.push(clean(block.text));
+    }
+  }
+
+  const cited = new Set(entry.citation_check.cited.map(baseId));
+  const list = sources.map((s, i) => [s, i + 1]).filter(([s]) => cited.has(baseId(s.paper_id)));
+  if (list.length) {
+    out.push("", heading("Sources"));
+    list.forEach(([s, n]) => out.push(slack ? `[${n}] <${s.arxiv_url}|${s.title}>` : `[${n}] ${s.title}, ${s.arxiv_url}`));
+  }
+
+  return out.join("\n");
+}
+
+// ---------- shell ----------
+
+function setNav(page) {
+  document.querySelectorAll("[data-nav]").forEach((a) => {
+    if (a.dataset.nav === page) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+}
+
+function topbarTitle(title) {
+  topbar.className = "topbar";
+  topbar.innerHTML = `<p class="topbar-title">${esc(title)}</p>
+    <p class="indexed"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
+}
+
+function topbarSearch() {
+  topbar.className = "topbar topbar--white";
+  topbar.innerHTML = `
+    <form class="search search--compact" id="quick-form" role="search">
+      ${SEARCH("")}
+      <label for="quick-q" class="sr-only">New research question</label>
+      <input id="quick-q" type="text" placeholder="Search Research Topic" autocomplete="off">
+      <button class="btn-research" type="submit">Research ${ARROW}</button>
+    </form>
+    <p class="indexed"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
+
+  document.getElementById("quick-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const question = document.getElementById("quick-q").value.trim();
+    if (!question) return;
+    state.question = question;
+    state.autoAsk = true;
+    location.hash = "#/";
+  });
+}
+
+async function refreshBriefs() {
+  try {
+    state.briefs = await api("/api/briefs?limit=500");
+  } catch {
+    return;
+  }
+  const waiting = state.briefs.filter((b) => b.status !== "approved").length;
+  const badge = document.getElementById("review-count");
+  badge.hidden = !waiting;
+  badge.textContent = waiting;
+  badge.setAttribute("aria-label", `${waiting} waiting`);
+}
+
+function statusPill(status) {
+  const s = STATUS[status] || STATUS.draft;
+  return `<span class="status ${s.cls}">${esc(s.pill)}</span>`;
+}
+
+function listRows(briefs) {
+  return briefs.map((b) => {
+    const meta = [
+      (AUDIENCES[b.audience] || { label: b.audience || "" }).label,
+      b.evidence ? `Evidence: ${b.evidence}` : "",
+      b.papers !== undefined ? `${b.papers} papers` : "",
+      formatDate(b.created_at),
+    ].filter(Boolean).join(" · ");
+    return `<a class="list-row" href="#/brief/${esc(b.id)}">
+      <span><span class="title">${esc(b.query)}</span><span class="meta">${esc(meta)}</span></span>
+      ${statusPill(b.status)}
+    </a>`;
+  }).join("");
+}
+
+// ---------- Home ----------
+
 const HOW = [
-  ["01 · Retrieve", "Find the best papers", "Hybrid keyword and meaning search over every chunk, ranked into the top papers."],
-  ["02 · Summarize", "Stick to the sources", "Objective, method, findings and limitations, using only the retrieved papers."],
-  ["03 · Translate", "Turn findings into a brief", "Bottom line, why it matters, what to do, evidence strength, caveat and sources."],
-  ["04 · Check", "Verify, then review", "Every citation is checked against what was retrieved, then an advisor approves it."],
+  ["RETRIEVE", "Find the best papers", "Hybrid keyword and meaning search over every chunk, ranked into the top papers."],
+  ["SUMMARIZE", "Stick to the sources", "Objective, method, findings and limitations, using only the retrieved papers."],
+  ["TRANSLATE", "Turn findings into a brief", "Bottom line, why it matters, what to do, evidence strength, caveat and sources."],
+  ["CHECK", "Verify, then review", "Every citation is checked against what was retrieved, then a KPMG advisor approves it."],
 ];
 
 function progressList() {
   return `<ol class="progress" id="progress" aria-label="Progress">
-    ${HOW.map(([num, title], i) => `<li data-step="${i}"><span class="dot"></span>${esc(num.split(" · ")[1])}: ${esc(title)}</li>`).join("")}
+    ${HOW.map(([kicker, title], i) => `<li data-step="${i}"><span class="dot"></span>${esc(kicker[0] + kicker.slice(1).toLowerCase())}: ${esc(title)}</li>`).join("")}
   </ol>`;
 }
 
-function renderAsk(scrollTo) {
-  const audience = AUDIENCES[state.audience];
+function topicChips() {
+  const categories = (corpus().categories || []).slice(0, MAX_TOPICS);
+  if (!categories.length) return "";
+  const selected = new Set(state.filters.categories);
+  return `<div class="topics">
+    <div class="chip-row" role="group" aria-labelledby="topic-label">
+      <span class="control-label" id="topic-label">Topics</span>
+      <button type="button" class="chip chip--small" data-topic="" aria-pressed="${!selected.size}">All topics</button>
+      ${categories.map((c) => `<button type="button" class="chip chip--small" data-topic="${esc(c.id)}"
+        aria-pressed="${selected.has(c.id)}" title="${esc(c.id)} · ${c.papers.toLocaleString("en-US")} papers">${esc(topicLabel(c.id))}</button>`).join("")}
+    </div>
+  </div>`;
+}
 
-  app.className = "page";
+function renderHome(scrollTo) {
+  const c = corpus();
+  const f = state.filters;
+  setNav("home");
+  topbarTitle("RESEARCH WORKSPACE");
+
+  const examples = (state.info && state.info.examples) || [];
+  const recent = state.briefs.slice(0, 5);
+
+  app.className = "";
   app.innerHTML = `
-    <section class="hero">
-      <h1>What does recent AI research mean for your business?</h1>
-      <p>Ask in plain English. The agent finds the most relevant new arXiv papers, summarizes them with citations, and turns the findings into a business brief that a KPMG advisor reviews before it’s used.</p>
+    <section class="hero" aria-labelledby="hero-h">
+      <div class="hero-inner">
+        <div class="hero-head">
+          <h1 id="hero-h">What Do You Want to Understand?</h1>
+          <p class="hero-sub">Ask a research question, search through recent papers, and receive a concise summary and business brief with sources.</p>
+        </div>
+
+        <form class="search search--hero" id="ask-form" role="search">
+          ${SEARCH("")}
+          <label for="question" class="sr-only">Research question</label>
+          <textarea id="question" rows="1" placeholder="Search Research Topic">${esc(state.question)}</textarea>
+          <button class="btn-research" type="submit" id="generate"${state.busy ? " disabled" : ""}>
+            ${state.busy ? "Researching…" : "Research"} ${ARROW}
+          </button>
+        </form>
+
+        <p class="indexed"><span class="dot" aria-hidden="true"></span>${esc(indexedText())}</p>
+        ${state.busy ? progressList() : ""}
+        ${state.error ? `<p class="error" role="alert">${esc(state.error)}</p>` : ""}
+
+        <div class="hero-controls">
+          <div class="chip-row" role="group" aria-labelledby="aud-label">
+            <span class="control-label" id="aud-label">Write the brief for</span>
+            ${Object.entries(AUDIENCES).map(([id, a]) =>
+              `<button type="button" class="chip" data-audience="${id}" aria-pressed="${id === state.audience}">${esc(a.label)}</button>`).join("")}
+          </div>
+          <div class="filters">
+            <label for="published" class="sr-only">Published</label>
+            <select id="published" class="select">
+              ${PUBLISHED.map(([v, l]) => `<option value="${v}"${v === f.published ? " selected" : ""}>${l}</option>`).join("")}
+            </select>
+            ${f.published === "custom" ? `<label for="since" class="sr-only">Published since</label>
+              <input id="since" type="date" class="date-input" value="${esc(f.since)}"
+                ${c.first_date ? `min="${esc(c.first_date)}"` : ""} ${c.last_date ? `max="${esc(c.last_date)}"` : ""}>` : ""}
+            <label for="topk" class="sr-only">Papers per answer</label>
+            <select id="topk" class="select">
+              ${[5, 3].map((k) => `<option value="${k}"${k === state.topK ? " selected" : ""}>${k} papers</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <p class="hint-on-blue" id="aud-hint" aria-live="polite">${esc(AUDIENCES[state.audience].hint)}</p>
+        ${topicChips()}
+      </div>
     </section>
 
-    <form class="card ask-card" id="ask-form" aria-label="Ask a question">
-      <div class="field">
-        <label for="question" class="field-label">Your question</label>
-        <textarea id="question" rows="3" placeholder="e.g., How can companies check AI models for bias before deploying them?">${esc(state.question)}</textarea>
-      </div>
-
-      <div class="field">
-        <span id="aud-label" class="field-label">Write the brief for</span>
-        <div role="group" aria-labelledby="aud-label" class="pills">
-          ${Object.entries(AUDIENCES).map(([id, a]) =>
-            `<button type="button" class="pill" data-audience="${id}" aria-pressed="${id === state.audience}">${esc(a.label)}</button>`).join("")}
+    <div class="content">
+      ${examples.length ? `<section class="section" aria-labelledby="examples-h">
+        <h2 class="eyebrow" id="examples-h">Try a question from our benchmark</h2>
+        <div class="grid-cards">
+          ${examples.map((q, i) => `<button type="button" class="q-card" data-example="${i}">
+            <span class="q">${esc(q)}</span>
+            <span class="go">Generate the brief ${ARROW}</span>
+          </button>`).join("")}
         </div>
-        <p class="hint">${esc(audience.hint)}</p>
-      </div>
+      </section>` : ""}
 
-      <div class="ask-footer">
-        <div class="field" style="gap: 6px">
-          <label for="topk" class="small-label">Papers per answer</label>
-          <select id="topk">
-            ${[3, 5].map((k) => `<option value="${k}"${k === state.topK ? " selected" : ""}>${k}</option>`).join("")}
-          </select>
+      <section class="section" id="how" aria-labelledby="how-h">
+        <h2 class="eyebrow" id="how-h">How every answer is built</h2>
+        <ol class="steps">
+          ${HOW.map(([kicker, title, text], i) => `<li class="step">
+            <span class="step-head"><span class="step-num">${i + 1}</span><span class="step-kicker">${kicker}</span></span>
+            <strong>${esc(title)}</strong>
+            <p>${esc(text)}</p>
+          </li>`).join("")}
+        </ol>
+      </section>
+
+      <section class="section" id="recent" aria-labelledby="recent-h">
+        <div class="section-head">
+          <h2 class="eyebrow" id="recent-h">Recent briefs</h2>
+          ${state.briefs.length > recent.length ? '<a href="#/library">See all in the Library</a>' : ""}
         </div>
-        <button type="submit" class="primary" id="generate"${state.busy ? " disabled" : ""}>
-          ${state.busy ? "Generating…" : "Generate brief"} ${ARROW}
-        </button>
-      </div>
+        <div class="list-panel">
+          ${recent.length ? listRows(recent) : '<p class="empty">No briefs yet. Ask a question to create the first one.</p>'}
+        </div>
+      </section>
+    </div>`;
 
-      ${state.busy ? progressList() : ""}
-      ${state.error ? `<p class="error" role="alert">${esc(state.error)}</p>` : ""}
-    </form>
-
-    ${exampleCards()}
-
-    <section id="how" class="stack" aria-labelledby="how-h">
-      <h2 id="how-h" class="eyebrow">How every answer is built</h2>
-      <ol class="steps">
-        ${HOW.map(([num, title, text]) => `<li>
-          <span class="step-num">${esc(num)}</span>
-          <span class="step-title">${esc(title)}</span>
-          <span class="step-text">${esc(text)}</span>
-        </li>`).join("")}
-      </ol>
-    </section>
-
-    <section id="recent" class="stack" aria-labelledby="recent-h">
-      <h2 id="recent-h" class="eyebrow">Recent briefs</h2>
-      <div class="recent" id="recent-list"><p class="empty">Loading…</p></div>
-    </section>`;
-
-  const form = document.getElementById("ask-form");
-  const textarea = document.getElementById("question");
-
-  textarea.addEventListener("input", () => { state.question = textarea.value; });
-  textarea.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) form.requestSubmit();
-  });
-  document.getElementById("topk").addEventListener("change", (e) => { state.topK = Number(e.target.value); });
-  form.querySelectorAll("[data-audience]").forEach((button) =>
-    button.addEventListener("click", () => {
-      state.audience = button.dataset.audience;
-      form.querySelectorAll("[data-audience]").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
-      form.querySelector(".hint").textContent = AUDIENCES[state.audience].hint;
-    }));
-  form.addEventListener("submit", (e) => { e.preventDefault(); ask(); });
-  app.querySelectorAll("[data-example]").forEach((button) =>
-    button.addEventListener("click", () => {
-      state.question = state.info.examples[Number(button.dataset.example)];
-      textarea.value = state.question;
-      ask();
-    }));
-
-  loadRecent();
+  bindHome();
 
   if (scrollTo) document.getElementById(scrollTo)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function loadRecent() {
-  const list = document.getElementById("recent-list");
-  if (!list) return;
-  try {
-    const briefs = await api("/api/briefs");
-    if (!briefs.length) {
-      list.innerHTML = '<p class="empty">No briefs yet. Ask a question to create the first one.</p>';
-      return;
-    }
-    list.innerHTML = briefs.map((b) => {
-      const status = STATUS[b.status] || STATUS.draft;
-      return `<a href="#/brief/${esc(b.id)}">
-        <span class="recent-q">${esc(b.query)}</span>
-        <span class="recent-meta">
-          <span>${esc(formatDate(b.created_at))}</span>
-          <span class="status-pill status-${esc(b.status)}">${esc(status.pill)}</span>
-        </span>
-      </a>`;
-    }).join("");
-  } catch (error) {
-    list.innerHTML = `<p class="empty">Couldn’t load saved briefs: ${esc(error.message)}</p>`;
-  }
+function bindHome() {
+  const form = document.getElementById("ask-form");
+  const textarea = document.getElementById("question");
+
+  const grow = () => { textarea.style.height = "auto"; textarea.style.height = textarea.scrollHeight + "px"; };
+  grow();
+  textarea.addEventListener("input", () => { state.question = textarea.value; grow(); });
+  textarea.addEventListener("keydown", (e) => {
+    // Enter asks; Shift+Enter adds a new line
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+  form.addEventListener("submit", (e) => { e.preventDefault(); ask(); });
+
+  app.querySelectorAll("[data-audience]").forEach((button) =>
+    button.addEventListener("click", () => {
+      state.audience = button.dataset.audience;
+      app.querySelectorAll("[data-audience]").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+      document.getElementById("aud-hint").textContent = AUDIENCES[state.audience].hint;
+    }));
+
+  document.getElementById("topk").addEventListener("change", (e) => { state.topK = Number(e.target.value); });
+  document.getElementById("published").addEventListener("change", (e) => {
+    state.filters.published = e.target.value;
+    renderHome();
+    if (e.target.value === "custom") document.getElementById("since")?.focus();
+  });
+  document.getElementById("since")?.addEventListener("change", (e) => { state.filters.since = e.target.value; });
+
+  app.querySelectorAll("[data-topic]").forEach((button) =>
+    button.addEventListener("click", () => {
+      const id = button.dataset.topic;
+      const chosen = new Set(state.filters.categories);
+      if (!id) chosen.clear();
+      else if (chosen.has(id)) chosen.delete(id);
+      else chosen.add(id);
+      state.filters.categories = [...chosen];
+      app.querySelectorAll("[data-topic]").forEach((b) => b.setAttribute("aria-pressed",
+        String(b.dataset.topic ? chosen.has(b.dataset.topic) : !chosen.size)));
+    }));
+
+  app.querySelectorAll("[data-example]").forEach((button) =>
+    button.addEventListener("click", () => {
+      state.question = state.info.examples[Number(button.dataset.example)];
+      ask();
+    }));
 }
 
 // Steps light up on a rough timer; the server answers in one go
 function animateProgress() {
-  const times = [0, 2000, 14000];
+  const times = [0, 2000, 30000];
   const timers = times.map((t, i) => setTimeout(() => {
     document.querySelectorAll("#progress li").forEach((li) => {
       const step = Number(li.dataset.step);
@@ -343,44 +607,76 @@ async function ask() {
   const question = state.question.trim();
   if (!question) {
     state.error = "Please type a question.";
-    renderAsk();
+    renderHome();
     document.getElementById("question").focus();
     return;
   }
   if (state.busy) return;
 
+  if (state.filters.published === "custom" && !state.filters.since) {
+    state.error = "Pick a start date, or choose a different Published option.";
+    renderHome();
+    return;
+  }
+
   state.busy = true;
   state.error = "";
-  renderAsk();
-  document.getElementById("ask-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  renderHome();
   const stop = animateProgress();
 
   try {
-    const record = await api("/api/ask", { question, audience: state.audience, top_k: state.topK });
+    const record = await api("/api/ask", {
+      question, audience: state.audience, top_k: state.topK, ...filterPayload(),
+    });
+    stop();
     state.busy = false;
     state.question = "";
-    stop();
+    refreshBriefs();
     location.hash = `#/brief/${record.id}`;
   } catch (error) {
     stop();
     state.busy = false;
     state.error = error.message;
-    renderAsk();
+    if (!location.hash.startsWith("#/brief/")) renderHome();
   }
 }
 
-// ---------- brief view ----------
+// ---------- Library and Review Queue ----------
+
+async function renderList(kind) {
+  const review = kind === "review";
+  setNav(kind);
+  topbarTitle(review ? "REVIEW QUEUE" : "LIBRARY");
+
+  app.className = "";
+  app.innerHTML = `<div class="content content--list">
+    <h1 class="page-title">${review ? "Review Queue" : "Library"}</h1>
+    <p class="intro">${review
+      ? "Briefs that are waiting for a KPMG reviewer, or were sent back with changes. Briefs can’t be used with clients until they’re approved."
+      : "Every saved brief, newest first. Opening one never calls the model again."}</p>
+    <div class="list-panel" id="list"><p class="empty">Loading…</p></div>
+  </div>`;
+
+  await refreshBriefs();
+  const list = document.getElementById("list");
+  if (!list) return;
+
+  const briefs = review ? state.briefs.filter((b) => b.status !== "approved") : state.briefs;
+  list.innerHTML = briefs.length
+    ? listRows(briefs)
+    : `<p class="empty">${review ? "Nothing waiting for review." : "No briefs yet. Ask a question on Home to create the first one."}</p>`;
+}
+
+// ---------- Brief page ----------
 
 function currentBrief() {
-  const record = state.record;
-  return record.briefs[state.view] || null;
+  return state.record.briefs[state.view] || null;
 }
 
 function checkCards(entry) {
   if (!entry) {
-    return `<div class="check">${icon("warn")}<div class="check-text">
-      <span class="check-title">No brief</span>
-      <span class="check-sub">No relevant papers were found, so there was nothing to translate.</span></div></div>`;
+    return `<div class="check">${icon("warn")}<div>
+      <strong>No brief</strong><span>No relevant papers were found, so there was nothing to translate.</span></div></div>`;
   }
   const c = entry.checks;
   const cards = [];
@@ -398,165 +694,311 @@ function checkCards(entry) {
 
   const e = c.evidence;
   cards.push(e.level
-    ? [icon(e.level === "High" ? "ok" : "warn"), `Evidence: ${e.level}`, e.reason || "See Evidence Strength below."]
+    ? [icon(e.level === "High" ? "ok" : "warn"), `Evidence: ${e.level}`, e.reason || "See Evidence Strength in the brief."]
     : [icon("warn"), "Evidence: not rated", "The brief didn’t give an evidence rating."]);
 
   if (c.summary_truncated || c.brief_truncated) {
     cards.push([icon("bad"), "Output cut off", "The model hit its token limit. Regenerate before using this."]);
   }
 
-  return cards.map(([svg, title, sub]) => `<div class="check">${svg}<div class="check-text">
-    <span class="check-title">${esc(title)}</span><span class="check-sub">${esc(sub)}</span></div></div>`).join("");
+  return cards.map(([svg, title, sub]) => `<div class="check">${svg}<div>
+    <strong>${esc(title)}</strong><span>${esc(sub)}</span></div></div>`).join("");
 }
 
-function sourceCards(record, cited) {
-  if (!record.sources.length) return '<p class="hint">No papers were retrieved.</p>';
-  return record.sources.map((s, i) => {
-    const isCited = cited.has(baseId(s.paper_id));
-    return `<div class="source" id="src-${i + 1}">
-      <div class="source-top">
-        <span class="source-id">[${i + 1}] ${esc(baseId(s.paper_id))}</span>
-        <span class="tag ${isCited ? "tag-cited" : "tag-uncited"}">${isCited ? "Cited" : "Not cited"}</span>
-      </div>
-      <span class="source-title">${esc(s.title)}</span>
-      ${s.section ? `<span class="source-section">Matched in: ${esc(s.section)}</span>` : ""}
-      <a href="${esc(s.arxiv_url)}" target="_blank" rel="noopener">Open on arXiv</a>
-    </div>`;
-  }).join("");
+// Problems shown on the Brief tab too, so they aren't only on Review
+function problemAlert(entry) {
+  if (!entry) return "";
+  const c = entry.checks;
+  const problems = [];
+  if (!c.citations.ok) problems.push("it cites papers that weren’t retrieved");
+  if (c.summary_truncated || c.brief_truncated) problems.push("the model output was cut off");
+  if (!problems.length) return "";
+  return `<div class="alert" role="alert">${icon("bad")}
+    <span>Check before using this brief: ${esc(problems.join(" and "))}.</span>
+    <button type="button" class="btn" data-goto="review">See the checks</button>
+  </div>`;
 }
 
-function reviewBanner(record) {
-  const status = STATUS[record.status] || STATUS.draft;
-  const hasBrief = !!currentBrief();
-  const noteForm = state.noteOpen ? `
-    <form class="note-box" id="note-form">
-      <label for="note" class="small-label">What should change? (optional)</label>
-      <textarea id="note" rows="2" placeholder="e.g., Focus on banking clients; the second recommendation is too generic."></textarea>
-      <div class="review-actions">
-        <button type="submit" class="secondary">Send back</button>
-        <button type="button" class="secondary" id="note-cancel">Cancel</button>
-      </div>
-    </form>` : "";
+function sourceCard(s, n, isCited) {
+  return `<div class="src${isCited ? " src--cited" : ""}" id="src-${n}">
+    <span class="id">[${n}] ${esc(baseId(s.paper_id))}</span>
+    <span class="name">${esc(s.title)}</span>
+    ${s.section ? `<span class="where">Matched in: ${esc(s.section)}</span>` : ""}
+    <a href="${esc(s.arxiv_url)}" target="_blank" rel="noopener">Open on arXiv</a>
+  </div>`;
+}
 
-  return `<section class="review status-${esc(record.status)}" aria-label="Review status">
-    <div class="review-text">
-      <span class="review-title">${esc(status.title)}</span>
-      <span class="review-sub">${esc(status.sub)}</span>
-      ${record.note ? `<p class="note"><strong>Reviewer note:</strong> ${esc(record.note)}</p>` : ""}
-    </div>
-    ${hasBrief && !state.noteOpen ? `<div class="review-actions">
-      ${record.status === "changes" ? `<button type="button" class="secondary" data-rewrite="${esc(state.view)}">Regenerate brief</button>` : ""}
-      ${record.status !== "changes" ? '<button type="button" class="secondary" id="request-changes">Request changes</button>' : ""}
-      ${record.status !== "approved" ? '<button type="button" class="secondary approve" id="approve">Approve brief</button>' : ""}
-    </div>` : ""}
-    ${noteForm}
+function citedAside(record, cited, label) {
+  const shown = record.sources.map((s, i) => [s, i + 1]).filter(([s]) => cited.has(baseId(s.paper_id)));
+  return `<aside class="sources-aside" aria-labelledby="aside-h">
+    <h2 id="aside-h">${esc(label)}</h2>
+    ${shown.length ? shown.map(([s, n]) => sourceCard(s, n, true)).join("") : '<p class="intro">No papers cited.</p>'}
+    ${record.sources.length ? `<button class="btn btn--link" type="button" data-goto="sources">See all ${record.sources.length} retrieved papers</button>` : ""}
+  </aside>`;
+}
+
+function followupSection(record, entry) {
+  if (!entry) return "";
+  const items = record.followups || [];
+
+  return `<section class="card followups" aria-labelledby="fu-h">
+    <h2 id="fu-h">Follow-up questions</h2>
+    <p class="intro">Answered from the research summary only, with no new search. Follow-ups aren’t part of the reviewed brief.</p>
+    ${items.map((f) => {
+      const index = items.indexOf(f);
+      const other = f.audience && f.audience !== state.view && AUDIENCES[f.audience];
+      const check = f.citation_check || { cited_not_retrieved: [], cited_not_in_summary: [] };
+      const bad = [...check.cited_not_retrieved, ...(check.cited_not_in_summary || [])];
+      return `<div class="followup${f.covered ? "" : " followup--gap"}">
+        <p class="fu-q">${esc(f.question)}</p>
+        ${other ? `<p class="fu-for">Answered for ${esc(other.label)}</p>` : ""}
+        <div class="fu-a">${renderBody(String(f.answer).split("\n"), record.sources)}</div>
+        ${bad.length ? `<p class="warn">Cites papers that aren’t in the summary: ${esc(bad.join(", "))}.</p>` : ""}
+        ${f.truncated ? '<p class="warn">The answer was cut off.</p>' : ""}
+        ${f.covered ? "" : `<div><button type="button" class="btn" data-research="${index}">Search new papers for this ${ARROW}</button></div>`}
+      </div>`;
+    }).join("")}
+    <form class="followup-form" id="followup-form">
+      <label for="followup" class="sr-only">Follow-up question</label>
+      <textarea id="followup" class="field" rows="2"
+        placeholder="e.g., What would this mean for a mid-size bank?">${esc(state.followup)}</textarea>
+      <div class="row">
+        <span>One model call. Enter to ask, Shift+Enter for a new line.</span>
+        <button type="submit" class="btn btn--primary"${state.followupBusy ? " disabled" : ""}>
+          ${state.followupBusy ? "Answering…" : "Ask follow-up"}
+        </button>
+      </div>
+    </form>
   </section>`;
+}
+
+function briefPanel(record, entry, cited) {
+  if (!entry) {
+    return `<article class="card"><div class="doc"><section><p>${esc(record.summary)}</p></section></div></article>`;
+  }
+  const others = Object.keys(AUDIENCES).filter((a) => a !== state.view);
+
+  return `${problemAlert(entry)}
+    <div class="brief-layout">
+      <div class="brief-main">
+        <article class="card">
+          <div class="doc">${renderDoc(entry.brief, record.sources, null, entry.checks.evidence.level)}</div>
+          <div class="actions">
+            <button type="button" class="btn" id="print">Export PDF</button>
+            <button type="button" class="btn" id="copy-email">Copy for email</button>
+            <button type="button" class="btn" id="copy-slack">Copy for Slack</button>
+            <button type="button" class="btn" id="copy-link">Copy link</button>
+            ${others.map((a) => record.briefs[a]
+              ? `<button type="button" class="btn" data-view="${a}">View ${esc(AUDIENCES[a].label)} brief</button>`
+              : `<button type="button" class="btn" data-rewrite="${a}">Rewrite for ${esc(AUDIENCES[a].label)}</button>`).join("")}
+          </div>
+        </article>
+        ${followupSection(record, entry)}
+      </div>
+      ${citedAside(record, cited, "Cited in this brief")}
+    </div>`;
+}
+
+function summaryPanel(record) {
+  const cited = new Set(record.citation_check.cited.map(baseId));
+  return `<div class="brief-layout">
+      <article class="card">
+        <p class="intro">The facts the brief is built from, written only from the retrieved papers. The brief is generated from this summary alone, so it can’t add anything the summary doesn’t say.</p>
+        <div class="doc">${renderDoc(record.summary, record.sources, SUMMARY_LABELS)}</div>
+      </article>
+      ${citedAside(record, cited, "Cited in the summary")}
+    </div>`;
+}
+
+function sourcesPanel(record, cited) {
+  if (!record.sources.length) return '<p class="intro">No papers were retrieved.</p>';
+  return `<section class="stack" aria-label="Retrieved papers">
+    <p class="intro">The ${record.sources.length} papers the search returned, ranked by relevance. The summary and brief may only cite papers on this list.</p>
+    ${record.sources.map((s, i) => {
+      const isCited = cited.has(baseId(s.paper_id));
+      return `<div class="src src-row${isCited ? " src--cited" : ""}" id="src-${i + 1}">
+        <div class="body">
+          <span class="id">[${i + 1}] ${esc(baseId(s.paper_id))}${s.section ? ` · matched in ${esc(s.section)}` : ""}</span>
+          <span class="name">${esc(s.title)}</span>
+        </div>
+        <div class="side">
+          <span class="${isCited ? "pill-cited" : "pill-not"}">${isCited ? "Cited" : "Not cited"}</span>
+          <a href="${esc(s.arxiv_url)}" target="_blank" rel="noopener">arXiv</a>
+        </div>
+      </div>`;
+    }).join("")}
+  </section>`;
+}
+
+function reviewPanel(record, entry) {
+  const status = STATUS[record.status] || STATUS.draft;
+  return `<div class="review-layout">
+    <section class="stack" aria-labelledby="checks-h">
+      <h2 id="checks-h" style="margin:0; font-size:17px">Automatic checks</h2>
+      ${checkCards(entry)}
+    </section>
+    <section class="card decision" aria-labelledby="decision-h">
+      <h2 id="decision-h">Reviewer decision</h2>
+      <div class="badges">${statusPill(record.status)}</div>
+      <p class="sub">${esc(status.sub)}</p>
+      ${record.note ? `<p class="note"><strong>Reviewer note:</strong> ${esc(record.note)}</p>` : ""}
+      ${entry ? `
+        <label for="note">Notes for the researcher (sent with Request changes)</label>
+        <textarea id="note" class="field" rows="3" placeholder="e.g., Focus on banking clients; the second recommendation is too generic."></textarea>
+        <div class="actions">
+          ${record.status === "changes" ? `<button type="button" class="btn" data-rewrite="${esc(state.view)}">Regenerate brief</button>` : ""}
+          ${record.status !== "changes" ? '<button type="button" class="btn" data-decision="changes">Request changes</button>' : ""}
+          ${record.status !== "approved" ? '<button type="button" class="btn btn--primary" data-decision="approved">Approve brief</button>' : ""}
+        </div>` : ""}
+    </section>
+  </div>`;
 }
 
 function renderBrief() {
   const record = state.record;
   const entry = currentBrief();
   const audience = AUDIENCES[state.view] || { label: state.view };
+  setNav("research");
+  topbarSearch();
 
-  const cited = new Set([
-    ...record.citation_check.cited,
-    ...(entry ? entry.citation_check.cited : []),
-  ].map(baseId));
+  const briefCited = new Set((entry ? entry.citation_check.cited : []).map(baseId));
+  const allCited = new Set([...record.citation_check.cited, ...briefCited].map(baseId));
+  const evidence = entry && entry.checks.evidence.level;
+  const lede = entry ? bottomLine(entry.brief) : "";
+  const filters = filtersText(record.filters);
 
-  const others = Object.keys(AUDIENCES).filter((a) => a !== state.view);
+  const panels = {
+    brief: () => briefPanel(record, entry, briefCited),
+    summary: () => summaryPanel(record),
+    sources: () => sourcesPanel(record, allCited),
+    review: () => reviewPanel(record, entry),
+  };
 
-  const briefTab = entry ? `
-    <div class="doc">${renderDoc(entry.brief, record.sources)}</div>
-    <div class="doc-actions">
-      <button type="button" class="secondary" id="print">Export PDF</button>
-      <button type="button" class="secondary" id="copy">Copy link</button>
-      ${others.map((a) => record.briefs[a]
-        ? `<button type="button" class="secondary" data-view="${a}">View ${esc(AUDIENCES[a].label)} brief</button>`
-        : `<button type="button" class="secondary" data-rewrite="${a}">Rewrite for ${esc(AUDIENCES[a].label)}</button>`).join("")}
-    </div>`
-    : `<div class="doc"><section><p>${esc(record.summary)}</p></section></div>`;
-
-  const summaryTab = `
-    <p class="lead">The facts the brief is built from, written only from the retrieved papers. The brief is generated from this summary alone, so it can’t add anything the summary doesn’t say.</p>
-    <div class="doc">${renderDoc(record.summary, record.sources, SUMMARY_LABELS)}</div>`;
-
-  app.className = "page brief-page";
+  app.className = "research";
   app.innerHTML = `
-    <a class="back" href="#/">${BACK} New question</a>
-
-    <section class="brief-head">
+    <div class="q-head">
+      <div class="badges">
+        ${statusPill(record.status)}
+        ${evidence ? `<span class="status status--info">Evidence: ${esc(evidence)}</span>` : ""}
+      </div>
       <h1>${esc(record.query)}</h1>
+      ${lede ? `<p class="lede">${esc(lede)}</p>` : ""}
       <div class="meta">
         <span>Written for: <strong>${esc(audience.label)}</strong></span>
-        <span>${record.sources.length} papers retrieved</span>
+        <span>${record.sources.length} papers retrieved, ${briefCited.size} cited in the brief</span>
+        ${filters ? `<span>Filters: ${esc(filters)}</span>` : ""}
         <span>Model: ${esc(record.model)}</span>
         <span>${esc(formatDate(record.created_at))}</span>
       </div>
-    </section>
-
-    ${reviewBanner(record)}
-
-    <section class="checks" aria-label="Automatic checks">${checkCards(entry)}</section>
+    </div>
 
     ${state.error ? `<p class="error" role="alert">${esc(state.error)}</p>` : ""}
 
-    <div class="brief-layout">
-      <article class="card brief-card">
-        <div class="tabs" role="group" aria-label="View">
-          <button type="button" class="tab" data-tab="brief" aria-pressed="${state.tab === "brief"}">Business brief</button>
-          <button type="button" class="tab" data-tab="summary" aria-pressed="${state.tab === "summary"}">Research summary</button>
-        </div>
-        ${state.tab === "brief" ? briefTab : summaryTab}
-      </article>
-      <aside class="card sources" aria-labelledby="sources-h">
-        <div class="sources-head"><h2 id="sources-h">Sources</h2><span>Ranked by relevance</span></div>
-        ${sourceCards(record, cited)}
-      </aside>
+    <div class="tabs" role="tablist" aria-label="Brief views">
+      ${TABS.map(([id, label]) => `<button class="tab" role="tab" id="tab-${id}" type="button"
+        aria-selected="${state.tab === id}" aria-controls="panel" tabindex="${state.tab === id ? 0 : -1}"
+        data-tab="${id}">${label}</button>`).join("")}
+    </div>
+
+    <div class="panel" id="panel" role="tabpanel" aria-labelledby="tab-${state.tab}">
+      ${panels[state.tab]()}
     </div>`;
 
   bindBrief();
 }
 
+function selectTab(tab, focus) {
+  state.tab = tab;
+  renderBrief();
+  if (focus) document.getElementById(`tab-${tab}`)?.focus();
+}
+
 function bindBrief() {
   const on = (selector, handler) => app.querySelectorAll(selector).forEach((el) => el.addEventListener("click", handler));
 
-  on("[data-tab]", (e) => { state.tab = e.currentTarget.dataset.tab; renderBrief(); });
-  on("[data-view]", (e) => { state.view = e.currentTarget.dataset.view; state.tab = "brief"; renderBrief(); });
-  on("[data-rewrite]", (e) => rewrite(e.currentTarget.dataset.rewrite, e.currentTarget));
-  on("#approve", () => setStatus("approved"));
-  on("#request-changes", () => { state.noteOpen = true; renderBrief(); document.getElementById("note").focus(); });
-  on("#note-cancel", () => { state.noteOpen = false; renderBrief(); });
-  on("#print", () => window.print());
-  on("#copy", async () => {
-    try { await navigator.clipboard.writeText(location.href); toast("Link copied"); }
-    catch { toast("Copy this link from the address bar"); }
+  const tabIds = TABS.map(([id]) => id);
+  app.querySelectorAll("[role=tab]").forEach((tab) => {
+    tab.addEventListener("click", () => selectTab(tab.dataset.tab));
+    tab.addEventListener("keydown", (e) => {
+      const i = tabIds.indexOf(tab.dataset.tab);
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabIds.length - 1 }[e.key];
+      if (next === undefined) return;
+      e.preventDefault();
+      selectTab(tabIds[(next + tabIds.length) % tabIds.length], true);
+    });
   });
 
-  // Citation links scroll to the source card without changing the route
+  on("[data-goto]", (e) => selectTab(e.currentTarget.dataset.goto, true));
+  on("[data-view]", (e) => { state.view = e.currentTarget.dataset.view; state.tab = "brief"; renderBrief(); });
+  on("[data-rewrite]", (e) => rewrite(e.currentTarget.dataset.rewrite, e.currentTarget));
+  on("[data-decision]", (e) => {
+    const decision = e.currentTarget.dataset.decision;
+    setStatus(decision, decision === "changes" ? document.getElementById("note").value : "");
+  });
+  on("#print", () => window.print());
+  on("#copy-link", () => copyText(location.href, "Link copied"));
+  on("#copy-email", () => copyText(briefAsText(state.record, currentBrief(), "email"), "Copied for email"));
+  on("#copy-slack", () => copyText(briefAsText(state.record, currentBrief(), "slack"), "Copied for Slack"));
+  on("[data-research]", (e) => {
+    const f = state.record.followups[Number(e.currentTarget.dataset.research)];
+    state.question = f.question;
+    state.audience = f.audience || state.view;
+    state.error = "";
+    location.hash = "#/";
+  });
+
+  // Citation links scroll to the source card; papers not shown here open the Sources tab
   on("[data-src]", (e) => {
     e.preventDefault();
-    const card = document.getElementById("src-" + e.currentTarget.dataset.src);
+    const n = e.currentTarget.dataset.src;
+    if (!document.getElementById("src-" + n)) selectTab("sources");
+    const card = document.getElementById("src-" + n);
     if (!card) return;
     card.scrollIntoView({ behavior: "smooth", block: "center" });
     card.classList.add("flash");
     setTimeout(() => card.classList.remove("flash"), 1500);
   });
 
-  const noteForm = document.getElementById("note-form");
-  if (noteForm) {
-    noteForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      setStatus("changes", document.getElementById("note").value);
+  const form = document.getElementById("followup-form");
+  if (form) {
+    const textarea = document.getElementById("followup");
+    textarea.addEventListener("input", () => { state.followup = textarea.value; });
+    textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
     });
+    form.addEventListener("submit", (e) => { e.preventDefault(); askFollowup(); });
+  }
+}
+
+async function askFollowup() {
+  const question = state.followup.trim();
+  if (!question || state.followupBusy) return;
+
+  const id = state.record.id;
+  state.followupBusy = true;
+  state.error = "";
+  renderBrief();
+
+  try {
+    const record = await api(`/api/briefs/${id}/followup`, { question });
+    state.followup = "";
+    if (state.record && state.record.id === id) state.record = record;
+  } catch (error) {
+    state.error = error.message;
+  }
+  state.followupBusy = false;
+  if (state.record && state.record.id === id) {
+    renderBrief();
+    document.getElementById("followup")?.focus();
   }
 }
 
 async function setStatus(status, note = "") {
   try {
     state.record = await api(`/api/briefs/${state.record.id}/status`, { status, note });
-    state.noteOpen = false;
     state.error = "";
     toast(status === "approved" ? "Brief approved" : "Sent back for changes");
+    refreshBriefs();
   } catch (error) {
     state.error = error.message;
   }
@@ -571,57 +1013,73 @@ async function rewrite(audience, button) {
     state.view = audience;
     state.tab = "brief";
     state.error = "";
+    refreshBriefs();
   } catch (error) {
     state.error = error.message;
   }
   renderBrief();
 }
 
-async function openBrief(id) {
-  app.className = "page brief-page";
-  app.innerHTML = '<p class="hint">Loading brief…</p>';
+async function openBrief(id, tab) {
+  setNav("research");
+  topbarSearch();
+  app.className = "research";
+  app.innerHTML = '<p class="loading">Loading brief…</p>';
   try {
-    state.record = await api(`/api/briefs/${encodeURIComponent(id)}`);
-    state.view = state.record.audience;
-    state.tab = "brief";
-    state.noteOpen = false;
+    const record = await api(`/api/briefs/${encodeURIComponent(id)}`);
+    if (!state.record || state.record.id !== record.id) {
+      state.followup = "";
+      state.tab = "brief";
+    }
+    if (TABS.some(([t]) => t === tab)) state.tab = tab;
+    state.record = record;
+    state.view = record.audience;
     state.error = "";
     renderBrief();
   } catch (error) {
-    app.innerHTML = `<a class="back" href="#/">${BACK} New question</a><p class="error" role="alert">${esc(error.message)}</p>`;
+    app.innerHTML = `<p class="error" role="alert">${esc(error.message)}</p><p><a href="#/">Back to Home</a></p>`;
   }
 }
 
 // ---------- routing ----------
 
-function route() {
+async function route() {
   const hash = location.hash || "#/";
-  const brief = hash.match(/^#\/brief\/(.+)$/);
-  const page = brief ? "brief" : hash === "#/saved" ? "saved" : hash === "#/how" ? "how" : "ask";
+  const brief = hash.match(/^#\/brief\/([^/]+)(?:\/(\w+))?$/);
+  window.scrollTo(0, 0);
 
-  document.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === page));
+  if (brief) return openBrief(brief[1], brief[2]);
 
-  if (brief) {
-    openBrief(brief[1]);
-  } else {
-    state.error = "";
-    renderAsk(page === "saved" ? "recent" : page === "how" ? "how" : null);
-    if (page === "ask") window.scrollTo(0, 0);
+  state.error = state.busy ? state.error : "";
+
+  if (hash === "#/library" || hash === "#/saved") return renderList("library");
+  if (hash === "#/review") return renderList("review");
+
+  if (hash === "#/research") {
+    const latest = state.record ? state.record.id : state.briefs[0] && state.briefs[0].id;
+    if (latest) { location.replace(`#/brief/${latest}`); return; }
+    history.replaceState(null, "", "#/");
+  }
+
+  renderHome(hash === "#/how" ? "how" : null);
+
+  if (state.autoAsk) {
+    state.autoAsk = false;
+    ask();
   }
 }
 
 async function init() {
   try {
     state.info = await api("/api/info");
-    const c = state.info.corpus;
-    if (c && c.papers) {
-      document.getElementById("corpus-text").textContent =
-        `${c.papers.toLocaleString("en-US")} papers indexed · ${formatDate(c.first_date, false)} – ${formatDate(c.last_date)}`;
-    }
     if (state.info.default_audience) state.audience = state.info.default_audience;
+    const model = [state.info.provider, state.info.model].filter(Boolean).join(" · ");
+    if (model) document.getElementById("model-text").textContent = model;
   } catch {
-    document.getElementById("corpus-text").textContent = "Server not reachable";
+    state.info = { corpus: {} };
+    document.getElementById("model-text").textContent = "Server not reachable";
   }
+  await refreshBriefs();
   route();
 }
 

@@ -156,3 +156,113 @@ def test_citation_check_flags_problems():
 
     assert not checks["citations"]["ok"]
     assert checks["brief_truncated"]
+
+
+# ---------- filters and follow-ups ----------
+
+def test_ask_passes_filters_to_the_retriever_and_saves_them(tmp_path):
+    retriever = FakeRetriever(make_papers())
+    app = create_app(retriever, CountingLLM([SUMMARY, BRIEF]), BriefStore(tmp_path))
+    client = TestClient(app)
+
+    record = client.post("/api/ask", json={
+        "question": "Q?", "since": "2026-10-01", "categories": ["cs.CL"],
+    }).json()
+
+    expected = {"since": "2026-10-01", "until": None, "categories": ["cs.CL"]}
+    assert retriever.filters == expected
+    assert record["filters"] == expected
+
+
+def test_ask_without_filters_sends_none(tmp_path):
+    retriever = FakeRetriever(make_papers())
+    app = create_app(retriever, CountingLLM([SUMMARY, BRIEF]), BriefStore(tmp_path))
+
+    record = TestClient(app).post("/api/ask", json={"question": "Q?"}).json()
+
+    assert retriever.filters is None
+    assert record["filters"] == {}
+
+
+def test_bad_filter_is_a_400(tmp_path):
+    class CheckingRetriever(FakeRetriever):
+        def search(self, query, top_k=5, filters=None):
+            from src.rag.lance_retriever import clean_filters
+            clean_filters(filters)
+            return super().search(query, top_k, filters)
+
+    app = create_app(CheckingRetriever(make_papers()), CountingLLM([]), BriefStore(tmp_path))
+    response = TestClient(app).post("/api/ask", json={"question": "Q?", "since": "last week"})
+
+    assert response.status_code == 400
+    assert "2026-10-05" in response.json()["detail"]
+
+
+def test_followup_uses_one_call_and_is_saved(setup):
+    client, llm = setup
+    llm.responses = [SUMMARY, BRIEF, "Mostly on hard problems. [2609.38107v1]",
+                     "Not covered: no cost figures."]
+    brief_id = client.post("/api/ask", json={"question": "Q?"}).json()["id"]
+    client.post(f"/api/briefs/{brief_id}/status", json={"status": "approved"})
+
+    record = client.post(f"/api/briefs/{brief_id}/followup", json={"question": "When?"}).json()
+
+    assert llm.calls == 3
+    assert record["status"] == "approved"
+    first = record["followups"][0]
+    assert first["question"] == "When?"
+    assert first["covered"]
+    assert first["citation_check"]["cited_not_in_summary"] == []
+
+    record = client.post(f"/api/briefs/{brief_id}/followup", json={"question": "Cost?"}).json()
+    assert [f["covered"] for f in record["followups"]] == [True, False]
+    assert client.get(f"/api/briefs/{brief_id}").json()["followups"] == record["followups"]
+
+
+def test_followup_bad_requests(setup):
+    client, llm = setup
+    brief_id = client.post("/api/ask", json={"question": "Q?"}).json()["id"]
+
+    assert client.post(f"/api/briefs/{brief_id}/followup", json={"question": "  "}).status_code == 400
+    assert client.post("/api/briefs/does-not-exist/followup", json={"question": "Q"}).status_code == 404
+    assert llm.calls == 2
+
+
+def test_followup_works_on_briefs_saved_before_followups_existed(setup, tmp_path):
+    client, llm = setup
+    llm.responses = [SUMMARY, BRIEF, "Yes. [2609.38107v1]"]
+    record = client.post("/api/ask", json={"question": "Q?"}).json()
+
+    store = BriefStore(tmp_path / "briefs")
+    old = store.load(record["id"])
+    del old["followups"]
+    store.save(old)
+
+    record = client.post(f"/api/briefs/{record['id']}/followup", json={"question": "Sure?"}).json()
+    assert len(record["followups"]) == 1
+
+
+def test_brief_list_has_evidence_and_paper_count(setup):
+    client, _ = setup
+    client.post("/api/ask", json={"question": "Q?", "top_k": 2})
+
+    listed = client.get("/api/briefs?limit=5").json()[0]
+
+    assert listed["evidence"] == "Medium"
+    assert listed["papers"] == 2
+
+
+def test_corpus_info_lists_categories(tmp_path):
+    import pandas as pd
+    from src.app.server import corpus_info
+
+    path = tmp_path / "papers.parquet"
+    pd.DataFrame({
+        "published_date": ["2026-10-01", "2026-10-02", "2026-10-03"],
+        "primary_category": ["cs.CL", "cs.AI", "cs.CL"],
+    }).to_parquet(path)
+
+    info = corpus_info(path)
+
+    assert info["categories"] == [{"id": "cs.CL", "papers": 2}, {"id": "cs.AI", "papers": 1}]
+    assert info["last_date"] == "2026-10-03"
