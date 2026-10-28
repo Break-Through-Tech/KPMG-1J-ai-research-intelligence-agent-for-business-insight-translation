@@ -21,6 +21,7 @@ It does not clean text again. Cleaning is Chythra's step and is already in paper
 Usage:
     python -m src.preprocessing.prepare_for_chunking   (defaults: data/papers_clean.parquet -> data/chunk_input.jsonl)
     python -m src.preprocessing.prepare_for_chunking papers_clean.parquet chunk_input.jsonl --append
+    python -m src.preprocessing.prepare_for_chunking --skip-indexed data/index   (only papers the index doesn't have)
 """
 import json
 import os
@@ -89,14 +90,21 @@ def prepare_paper(paper):
     return out
 
 
-def run_prepare(src="data/papers_clean.parquet", dst="data/chunk_input.jsonl", append=False):
+def run_prepare(src="data/papers_clean.parquet", dst="data/chunk_input.jsonl", append=False,
+                skip_indexed=None):
     """writes chunk_input.jsonl and returns the rows added this run.
     in append mode, existing rows are kept except papers that now have a newer version,
-    since the chunker groups rows by paper_id and would otherwise mix v1 and v2 together"""
+    since the chunker groups rows by paper_id and would otherwise mix v1 and v2 together.
+    skip_indexed: an index directory; papers it already has (same or newer version) are left out,
+    so only new papers, the index backlog and newer versions get chunked and embedded"""
     existing = []
     if append and os.path.exists(dst):
         existing = [json.loads(l) for l in open(dst) if l.strip()]
-    have = {}  # paper_id -> version already in dst
+    have = {}  # paper_id -> version already in dst or the index
+    if skip_indexed:
+        from ..indexing.store import indexed_versions
+        have = indexed_versions(skip_indexed)
+        print(f"{len(have)} papers are already in the index at {skip_indexed}, skipping them")
     for r in existing:
         have[r["paper_id"]] = max(have.get(r["paper_id"], 0), r.get("version", 1))
 
@@ -136,8 +144,10 @@ def main():
     ap.add_argument("dst", nargs="?", default="data/chunk_input.jsonl", help="output chunk_input.jsonl")
     ap.add_argument("--append", action="store_true",
                     help="keep existing rows and only add new papers or newer versions")
+    ap.add_argument("--skip-indexed", metavar="INDEX_DIR",
+                    help="leave out papers this index already has, e.g. data/index (what the GitHub workflow does)")
     a = ap.parse_args()
-    run_prepare(a.src, a.dst, a.append)
+    run_prepare(a.src, a.dst, a.append, a.skip_indexed)
 
 
 if __name__ == "__main__":

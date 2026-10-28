@@ -5,20 +5,37 @@
 #                          + chunk search, merged with RRF) on the LanceDB index
 #
 # Both return the same paper dicts as CombinedRetriever.search, so the
-# pipeline (src/pipeline) works with either one unchanged.
+# pipeline (src/pipeline) works with either one unchanged. Each paper also
+# carries "passages": its most relevant results passage and its limitations
+# (or conclusion) passage, so the summary can report findings and caveats
+# rather than only what the introduction says.
 
 import re
 
 import numpy as np
 import pandas as pd
 
-from src.indexing.store import open_index, search as index_search
+from src.indexing.store import load_paper_vectors, open_index, paper_text, search as index_search
+from src.preprocessing.metadata import split_version
 from src.vectorizing.embedder import TextEmbedder
+
+# Extra passages sent for each paper: (label, section types to try in order).
+# The first group with a chunk in the paper is used. "discussion" is left out
+# because its most common heading is "Ethics Statement".
+PASSAGES = [
+    ("results", [("results", "experiments")]),
+    ("limitations", [("limitations",), ("conclusion",)]),
+]
 
 
 def base_id(paper_id):
     """Treat arXiv versions such as v1 and v2 as the same paper."""
     return re.sub(r"v\d+$", "", str(paper_id).strip())
+
+
+def _quoted(values):
+    """SQL string literals for a where clause, with quotes escaped"""
+    return ", ".join("'" + str(v).replace("'", "''") + "'" for v in values)
 
 
 def rrf_merge(rankings, k=60):
@@ -68,9 +85,12 @@ class LanceRetriever:
         index_dir="data/index",
         hybrid=True,
         embedder=None,
+        passages=True,
     ):
         self.chunk_pool = 100
         self.hybrid = hybrid
+        # False returns only the best chunk per paper, e.g. for retrieval-only benchmarks
+        self.passages = passages
 
         self.embedder = embedder or TextEmbedder()
         self.table = open_index(index_dir, self.embedder)
@@ -118,32 +138,96 @@ class LanceRetriever:
 
         return papers.set_index("base_id").sort_index()
 
-    def _search_chunks(self, query, k, where=None):
+    def _search_chunks(self, query, vector, k, where=None):
         return index_search(
-            self.table, self.embedder, query, k=k, where=where, hybrid=self.hybrid
+            self.table, self.embedder, query, k=k, where=where,
+            hybrid=self.hybrid, vector=vector
         )
 
-    def _best_chunks(self, query):
+    def _best_chunks(self, query, vector):
         """
-        Papers in rank order with their best chunk, from one chunk search.
-        Results come back best first, so a paper's first chunk is its best.
+        From one chunk search, in rank order:
+        best:     each paper's best chunk, which ranks the papers
+        evidence: each paper's best chunk that isn't its abstract, which is
+                  what the LLM reads (it gets the abstract separately)
         """
         best = {}
+        evidence = {}
 
-        for row in self._search_chunks(query, self.chunk_pool):
+        for row in self._search_chunks(query, vector, self.chunk_pool):
             best.setdefault(row["paper_id"], row)
+            if row.get("section_type") != "abstract":
+                evidence.setdefault(row["paper_id"], row)
 
-        return best
+        return best, evidence
 
-    def _paper_result(self, paper_id, score, chunk_row):
+    def _search_paper(self, paper_id, query, vector, types=None, exclude=None):
+        """Best chunk within one paper, optionally only from some section types."""
+        where = f"paper_id = {_quoted([paper_id])}"
+        if types:
+            where += f" AND section_type IN ({_quoted(types)})"
+        if exclude:
+            where += f" AND section_type NOT IN ({_quoted(exclude)})"
+
+        rows = self._search_chunks(query, vector, 1, where=where)
+
+        return rows[0] if rows else None
+
+    def _main_evidence(self, paper_id, query, vector, evidence):
+        """
+        The paper's best non-abstract chunk: from the shared search if it was
+        there, else searched within the paper. Papers with nothing but an
+        abstract chunk fall back to it.
+        """
+        row = (
+            evidence.get(paper_id)
+            or self._search_paper(paper_id, query, vector, exclude=["abstract"])
+            or self._search_paper(paper_id, query, vector)
+        )
+
+        if row is None:
+            raise RuntimeError(f"No supporting chunk found for {paper_id}.")
+
+        return row
+
+    def _extra_passages(self, paper_id, query, vector, used_chunk_id):
+        """The paper's most relevant results and limitations passages (see PASSAGES)."""
+        passages = []
+        used = {used_chunk_id}
+
+        for label, type_groups in PASSAGES:
+            row = None
+            for types in type_groups:
+                row = self._search_paper(paper_id, query, vector, types=types)
+                if row:
+                    break
+
+            if row and row["chunk_id"] not in used:
+                used.add(row["chunk_id"])
+                passages.append({
+                    "label": label,
+                    "section": row.get("section") or "",
+                    "section_type": row["section_type"],
+                    "chunk_id": row["chunk_id"],
+                    "text": row["text"],
+                })
+
+        return passages
+
+    def _paper_result(self, paper_id, score, query, vector, evidence):
         paper = self.papers.loc[paper_id]
+        row = self._main_evidence(paper_id, query, vector, evidence)
 
         return {
             "paper_id": str(paper["arxiv_id"]),
             "title": paper["title"],
             "abstract": paper["abstract_clean"],
             "score": float(score),
-            **_evidence(chunk_row),
+            **_evidence(row),
+            "passages": (
+                self._extra_passages(paper_id, query, vector, row["chunk_id"])
+                if self.passages else []
+            ),
         }
 
     def _check_top_k(self, query, top_k, limit):
@@ -157,13 +241,14 @@ class LanceRetriever:
         """Return the top papers with their best supporting chunk."""
         self._check_top_k(query, top_k, self.chunk_pool)
 
-        best = self._best_chunks(query)
+        vector = self.embedder.embed_query(query)
+        best, evidence = self._best_chunks(query, vector)
 
         results = []
 
         for paper_id, row in list(best.items())[:top_k]:
             score = row.get("_relevance_score", 1.0 - row.get("_distance", 0.0))
-            results.append(self._paper_result(paper_id, score, row))
+            results.append(self._paper_result(paper_id, score, query, vector, evidence))
 
         return results
 
@@ -183,19 +268,49 @@ class LanceCombinedRetriever(LanceRetriever):
         index_dir="data/index",
         hybrid=True,
         embedder=None,
+        passages=True,
     ):
-        super().__init__(papers_path, index_dir, hybrid, embedder)
+        super().__init__(papers_path, index_dir, hybrid, embedder, passages)
 
         # Same settings as CombinedRetriever and Thania's benchmark
         self.paper_candidates = 30
         self.rrf_constant = 60
 
         self.paper_ids = self.papers.index.tolist()
+        self.paper_vectors = self._load_paper_vectors(index_dir)
 
-        texts = (self.papers["title"] + "\n" + self.papers["abstract_clean"]).tolist()
+    def _load_paper_vectors(self, index_dir):
+        """
+        Title/abstract vectors, read from the index (src/indexing stores them).
+        Papers it has no vector for, or only one from another version, are
+        embedded here, so an index built before paper vectors existed still works.
+        """
+        stored = load_paper_vectors(index_dir)
+        versions = [split_version(str(arxiv_id))[1] for arxiv_id in self.papers["arxiv_id"]]
 
-        # Embedded once at startup, then reused for every query
-        self.paper_vectors = self.embedder.embed_documents(texts)
+        vectors = np.zeros(
+            (len(self.paper_ids), self.embedder.model.get_embedding_dimension()),
+            dtype=np.float32,
+        )
+        missing = []
+
+        for position, (paper_id, version) in enumerate(zip(self.paper_ids, versions)):
+            saved = stored.get(paper_id)
+            if saved and saved[0] == version:
+                vectors[position] = saved[1]
+            else:
+                missing.append(position)
+
+        if missing:
+            print(f"Embedding {len(missing):,} paper titles and abstracts the index "
+                  "doesn't store (run python -m src.indexing.cli to add them)")
+            texts = [
+                paper_text(self.papers["title"].iloc[p], self.papers["abstract_clean"].iloc[p])
+                for p in missing
+            ]
+            vectors[missing] = self.embedder.embed_documents(texts)
+
+        return vectors
 
     def _rank_papers(self, query_vector):
         """Rank papers by title/abstract cosine similarity."""
@@ -205,35 +320,22 @@ class LanceCombinedRetriever(LanceRetriever):
 
         return [self.paper_ids[position] for position in positions]
 
-    def _evidence_for(self, paper_id, query):
-        """Best chunk within one paper, for papers found only by title/abstract."""
-        escaped = str(paper_id).replace("'", "''")
-        rows = self._search_chunks(query, 1, where=f"paper_id = '{escaped}'")
-
-        if not rows:
-            raise RuntimeError(f"No supporting chunk found for {paper_id}.")
-
-        return rows[0]
-
     def search(self, query, top_k=5):
         """Return ranked papers, metadata, and supporting passages."""
         self._check_top_k(query, top_k, self.paper_candidates)
 
-        query_vector = self.embedder.embed_query(query)
+        vector = self.embedder.embed_query(query)
 
-        best = self._best_chunks(query)
+        best, evidence = self._best_chunks(query, vector)
 
-        paper_ranking = self._rank_papers(query_vector)
+        paper_ranking = self._rank_papers(vector)
         chunk_ranking = list(best)[:self.paper_candidates]
 
         ranking, scores = rrf_merge(
             [paper_ranking, chunk_ranking], k=self.rrf_constant
         )
 
-        results = []
-
-        for paper_id in ranking[:top_k]:
-            row = best.get(paper_id) or self._evidence_for(paper_id, query)
-            results.append(self._paper_result(paper_id, scores[paper_id], row))
-
-        return results
+        return [
+            self._paper_result(paper_id, scores[paper_id], query, vector, evidence)
+            for paper_id in ranking[:top_k]
+        ]

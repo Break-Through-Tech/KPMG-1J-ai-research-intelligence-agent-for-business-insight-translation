@@ -3,8 +3,10 @@
 import json
 from datetime import date
 
+import lancedb
 import pandas as pd
 
+from src.indexing.store import TABLE_NAME, make_schema
 from src.preprocessing.prepare_for_chunking import prepare_paper, run_prepare
 
 
@@ -59,3 +61,51 @@ def test_unusable_papers_are_skipped(tmp_path):
     src, dst = tmp_path / "clean.parquet", tmp_path / "chunk_input.jsonl"
     write_papers(src, [paper(usable=False)])
     assert run_prepare(str(src), str(dst)) == []
+
+
+def make_index(index_dir, versions):
+    """a tiny chunks table with one row per {paper_id: version}, no embedding model needed"""
+    rows = [{"chunk_id": f"{paper_id}::0000", "paper_id": paper_id, "version": version, "chunk_index": 0,
+             "vector": [0.5] * 4, "text": "t", "title": "t", "authors": ["a"], "arxiv_url": "u", "section": "s",
+             "section_type": "method", "published_date": "2026-09-30", "primary_category": "cs.AI",
+             "categories": ["cs.AI"]} for paper_id, version in versions.items()]
+    lancedb.connect(index_dir).create_table(TABLE_NAME, data=rows, schema=make_schema(4))
+
+
+def other_paper():
+    return {**paper(), "arxiv_id": "2609.30265v1", "base_id": "2609.30265"}
+
+
+def test_skip_indexed_leaves_out_papers_the_index_has(tmp_path):
+    src, dst = tmp_path / "clean.parquet", tmp_path / "chunk_input.jsonl"
+    write_papers(src, [paper(), other_paper()])
+    make_index(tmp_path / "index", {"2609.30264": 1})
+
+    run_prepare(str(src), str(dst), skip_indexed=str(tmp_path / "index"))
+    assert {r["paper_id"] for r in read_rows(dst)} == {"2609.30265"}
+
+
+def test_skip_indexed_keeps_newer_versions(tmp_path):
+    src, dst = tmp_path / "clean.parquet", tmp_path / "chunk_input.jsonl"
+    write_papers(src, [paper(version=2)])
+    make_index(tmp_path / "index", {"2609.30264": 1})
+
+    run_prepare(str(src), str(dst), skip_indexed=str(tmp_path / "index"))
+    assert {r["version"] for r in read_rows(dst)} == {2}
+
+
+def test_skip_indexed_with_no_index_yet_keeps_everything(tmp_path):
+    src, dst = tmp_path / "clean.parquet", tmp_path / "chunk_input.jsonl"
+    write_papers(src, [paper(), other_paper()])
+
+    run_prepare(str(src), str(dst), skip_indexed=str(tmp_path / "missing_index"))
+    assert {r["paper_id"] for r in read_rows(dst)} == {"2609.30264", "2609.30265"}
+
+
+def test_skip_indexed_can_leave_nothing_to_chunk(tmp_path):
+    src, dst = tmp_path / "clean.parquet", tmp_path / "chunk_input.jsonl"
+    write_papers(src, [paper()])
+    make_index(tmp_path / "index", {"2609.30264": 1})
+
+    assert run_prepare(str(src), str(dst), skip_indexed=str(tmp_path / "index")) == []
+    assert read_rows(dst) == []

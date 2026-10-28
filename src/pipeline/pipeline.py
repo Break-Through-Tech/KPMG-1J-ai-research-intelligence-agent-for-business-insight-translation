@@ -47,13 +47,26 @@ def format_retrieved_content(papers):
     for paper in papers:
         paper_id = paper["paper_id"]
 
-        blocks.append(
+        block = (
             f"[{paper_id}] Title: {paper.get('title', '')}\n"
             f"Abstract: {paper.get('abstract', '')}\n"
             f"Section: {paper.get('best_chunk_section', '')}\n"
             f"Chunk ID: {paper.get('chunk_id', '')}\n"
             f"{paper.get('best_chunk_text', '')}"
         )
+
+        # results and limitations passages from the Lance retrievers, named by the
+        # section they came from, so a conclusion standing in for a missing
+        # limitations section isn't presented to the LLM as limitations
+        for passage in paper.get("passages") or []:
+            kind = passage.get("section_type") or passage["label"]
+            block += (
+                f"\n\n{kind.replace('_', ' ').capitalize()} passage "
+                f"(Section: {passage['section']}, Chunk ID: {passage['chunk_id']}):\n"
+                f"{passage['text']}"
+            )
+
+        blocks.append(block)
 
     return "\n\n".join(blocks)
 
@@ -93,7 +106,12 @@ def _source_info(paper):
         "arxiv_url": f"https://arxiv.org/abs/{base_id(paper['paper_id'])}",
         "chunk_id": paper.get("chunk_id", ""),
         "section": paper.get("best_chunk_section", ""),
-        "score": paper.get("score")
+        "score": paper.get("score"),
+        # the other passages the LLM read from this paper
+        "passages": [
+            {key: passage[key] for key in ("label", "section", "chunk_id")}
+            for passage in paper.get("passages") or []
+        ]
     }
 
 

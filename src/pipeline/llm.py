@@ -1,9 +1,10 @@
 # LLM client used to generate summaries from retrieved research
 #
-# Groq is the default and uses the same model and settings as Lakshmee's
-# summarization testing (src/summarization/README.md), so results stay
-# comparable. Gemini is available through Google's OpenAI-compatible
-# endpoint for when the Groq daily token limit runs out.
+# NVIDIA is the default: its free trial API takes the longer prompts that come with
+# the results and limitations passages, which Groq's free tier (8,000 tokens a
+# minute) rejects. Groq uses the same model and settings as Lakshmee's
+# summarization testing (src/summarization/README.md), so it's kept for comparing
+# with earlier runs. Gemini is available through Google's OpenAI-compatible endpoint.
 
 import os
 import re
@@ -22,9 +23,18 @@ PROVIDERS = {
         "key_variable": "GEMINI_API_KEY",
         "model": "gemini-3.8-flash",
     },
+    # free trial API at build.nvidia.com; large enough per-minute limits for the longer
+    # prompts with results and limitations passages, which Groq's free tier rejects.
+    # Nemotron Ultra kept numbers exact and cited every point in testing (~2 min a question);
+    # --model openai/gpt-oss-20b is faster (~20 s) but less careful
+    "nvidia": {
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "key_variable": "NVIDIA_API_KEY",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b",
+    },
 }
 
-DEFAULT_PROVIDER = "groq"
+DEFAULT_PROVIDER = "nvidia"
 DEFAULT_MODEL = PROVIDERS[DEFAULT_PROVIDER]["model"]
 
 # Waits (seconds) when a rate limit error doesn't say how long to wait
@@ -146,6 +156,12 @@ class LLM:
         from openai import RateLimitError
 
         for attempt in range(self.max_retries + 1):
+            # reasoning_effort=None leaves it out, for models that don't accept it
+            extra = (
+                {"reasoning_effort": self.reasoning_effort}
+                if self.reasoning_effort else {}
+            )
+
             try:
                 return self.client.chat.completions.create(
                     model=self.model,
@@ -155,7 +171,7 @@ class LLM:
                     ],
                     temperature=self.temperature,
                     max_completion_tokens=self.max_tokens,
-                    reasoning_effort=self.reasoning_effort
+                    **extra
                 )
 
             except RateLimitError as error:

@@ -108,8 +108,8 @@ jobs:
           echo "added=$((AFTER - ${{ steps.download.outputs.before }}))" >> "$GITHUB_OUTPUT"
 
       - name: Chunk and index new papers
-        # chunk_input and chunks are rebuilt from papers_clean every run (minutes), but the index
-        # only embeds papers that are new or have a newer version, so the rest is reused.
+        # only papers the index doesn't have yet (new papers, the index backlog and newer versions)
+        # are chunked and embedded; everything already indexed is reused as is.
         # embedding runs on CPU (~800 papers an hour), so it stops after index_minutes (90 by default) and
         # saves what it has; the leftover papers (backlog_papers in the manifest) are picked up by the next run.
         # runs even when no papers were added, so a backlog keeps shrinking.
@@ -121,8 +121,9 @@ jobs:
         run: |
           # so a crash in the indexer isn't hidden by the tee below
           set -o pipefail
-          python -m src.preprocessing.prepare_for_chunking
+          python -m src.preprocessing.prepare_for_chunking --skip-indexed data/index
           python -m src.chunking.cli
+          # also stores each indexed paper's title/abstract vector, which the retriever ranks papers by
           python -m src.indexing.cli --max-minutes "${{ inputs.index_minutes || '90' }}" | tee index.log
           # "added N chunks" from the last line; 0 means the index didn't change
           echo "indexed=$(sed -n 's/^added \([0-9,]*\) chunks.*/\1/p' index.log | tr -d , | tail -1)" >> "$GITHUB_OUTPUT"
@@ -162,7 +163,7 @@ jobs:
           print("- `papers.parquet`: raw ingestion output, used by the next update run")
           print("- `preprocess_report.json`: corpus summary")
           print("- `index.tar.gz`: LanceDB search index, unpack into `data/` and use `src/indexing` to search it")
-          print("- `chunk_report.json`: chunking summary")
+          print("- `chunk_report.json`: chunking summary for the papers chunked in this run")
           EOF
           ASSETS=(data/papers_clean.parquet data/papers.parquet data/preprocess_report.json)
           # index.tar.gz is the new index, or the downloaded previous one if indexing failed

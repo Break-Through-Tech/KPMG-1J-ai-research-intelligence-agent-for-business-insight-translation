@@ -3,6 +3,7 @@
 # data/chunks.parquet -> data/index/ (LanceDB table "chunks" + index_manifest.json)
 
 import time
+from pathlib import Path
 
 import lancedb
 import numpy as np
@@ -66,6 +67,19 @@ def open_index(index_dir, embedder, chunk_config = None, rebuild = False):
         save_manifest(index_dir, current)
     return table
 
+def indexed_versions(index_dir) -> dict[str, int]:
+    """{paper_id: version} for every paper already in the index, {} if there is no index yet.
+    reads only the two id columns and doesn't load the embedding model, so the chunking
+    step can use it to skip papers that are already indexed"""
+    if not Path(index_dir).exists():
+        return {}
+    db = lancedb.connect(index_dir)
+    if TABLE_NAME not in db.list_tables().tables:
+        return {}
+    ids = db.open_table(TABLE_NAME).search().select(["paper_id", "version"]).limit(None).to_pandas()
+    return {paper_id: int(version) for paper_id, version in ids.groupby("paper_id")["version"].max().items()}
+
+
 def papers_to_index(table, chunks) -> set[str]:
     #paper ids that are new or whose chunks are a newer version than the index is
     latest = chunks.groupby("paper_id")["version"].max()
@@ -115,8 +129,12 @@ def update_index(table, chunks, embedder, index_dir, max_seconds=None,
     with max_seconds, it stops after the batch that runs past the limit; the papers left over
     are counted in the manifest as backlog_papers and picked up by the next run
     """
-    validate_chunks(chunks)
-    todo = papers_to_index(table, chunks)
+    # no chunks happens when chunking skipped every paper because the index already has it
+    if len(chunks) == 0:
+        todo = set()
+    else:
+        validate_chunks(chunks)
+        todo = papers_to_index(table, chunks)
     if not todo:
         print("index is already up to date")
         manifest = load_manifest(index_dir) or {}
@@ -160,9 +178,11 @@ def update_index(table, chunks, embedder, index_dir, max_seconds=None,
     })
     return added
 
-def search(table, embedder, query, k=10, where=None, hybrid=True) -> list[dict]:
+def search(table, embedder, query, k=10, where=None, hybrid=True, vector=None) -> list[dict]:
     #top k chunks for a natural language query
-    vector = embedder.embed_query(query)
+    #pass vector when the query is already embedded, so several searches for one question embed it once
+    if vector is None:
+        vector = embedder.embed_query(query)
     if hybrid:
         q = table.search(query_type="hybrid").vector(vector).text(query)
     else:
@@ -172,4 +192,76 @@ def search(table, embedder, query, k=10, where=None, hybrid=True) -> list[dict]:
         q = q.where(where, prefilter=True)  # filter first, then rank, so we still get k results
     return q.limit(k).to_list()
 
-    
+
+# ---------- paper vectors ----------
+# one vector per paper for its title + abstract, which LanceCombinedRetriever ranks papers by.
+# stored next to the chunks so the retriever loads them instead of embedding every paper at startup
+
+PAPERS_TABLE = "papers"
+
+
+def paper_text(title, abstract) -> str:
+    #the exact text the retriever compares a question against, so stored and fresh vectors match
+    return f"{title}\n{abstract}"
+
+
+def make_paper_schema(dim: int) -> pa.Schema:
+    return pa.schema([
+        pa.field("paper_id", pa.string()),   # base id, no version
+        pa.field("version", pa.int32()),     # version of the papers_clean row that was embedded
+        pa.field("vector", pa.list_(pa.float32(), dim)),
+    ])
+
+
+def open_paper_table(index_dir, dim, rebuild=False):
+    db = lancedb.connect(index_dir)
+    return db.create_table(PAPERS_TABLE, schema=make_paper_schema(dim),
+                           mode="overwrite" if rebuild else "create", exist_ok=not rebuild)
+
+
+def load_paper_vectors(index_dir) -> dict:
+    #{base paper id: (version, vector)}, empty if the index has no paper table yet (built before it existed)
+    db = lancedb.connect(index_dir)
+    if PAPERS_TABLE not in db.list_tables().tables:
+        return {}
+    rows = db.open_table(PAPERS_TABLE).to_arrow().to_pydict()
+    return {
+        paper_id: (version, np.asarray(vector, dtype=np.float32))
+        for paper_id, version, vector in zip(rows["paper_id"], rows["version"], rows["vector"])
+    }
+
+
+def update_paper_vectors(index_dir, chunk_table, papers, embedder, batch_size=1000) -> int:
+    """embeds title + abstract for every paper in the chunk index that has no paper vector yet,
+    or one made from an older version. returns how many were embedded
+
+    papers: papers_clean rows with base_id, version, title and abstract_clean.
+    papers still waiting in the chunk backlog are skipped, they get a vector once they're indexed
+    """
+    indexed = set(chunk_table.search().select(["paper_id"]).limit(None).to_pandas()["paper_id"])
+    papers = (papers[papers["base_id"].isin(indexed)]
+              .sort_values("version").drop_duplicates("base_id", keep="last"))
+
+    table = open_paper_table(index_dir, embedder.model.get_embedding_dimension())
+    have = {paper_id: version for paper_id, (version, _) in load_paper_vectors(index_dir).items()}
+    todo = papers[[have.get(p) != v for p, v in zip(papers["base_id"], papers["version"])]]
+    if todo.empty:
+        return 0
+
+    print(f"embedding titles and abstracts of {len(todo):,} papers")
+    for start in range(0, len(todo), batch_size):
+        batch = todo.iloc[start:start + batch_size]
+        texts = [paper_text(t, a) for t, a in
+                 zip(batch["title"].fillna("").astype(str), batch["abstract_clean"].fillna("").astype(str))]
+        vectors = embedder.embed_documents(texts)
+        if not np.isfinite(vectors).all():
+            raise RuntimeError("embeddings contain NaN or infinite values")
+        rows = pa.table({
+            "paper_id": batch["base_id"].astype(str).tolist(),
+            "version": batch["version"].astype("int32").tolist(),
+            "vector": list(vectors),
+        }, schema=table.schema)
+        table.delete(_in_list("paper_id", batch["base_id"]))
+        table.add(rows)
+    return len(todo)
+

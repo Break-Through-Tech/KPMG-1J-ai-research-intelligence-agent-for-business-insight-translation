@@ -6,13 +6,13 @@ A local web page where consultants ask a question and get a cited business brief
 
 ```bash
 pip install -r requirements.txt
-export GROQ_API_KEY=...                 # or GEMINI_API_KEY with --provider gemini
+export NVIDIA_API_KEY=nvapi-...         # free trial key at build.nvidia.com
 python -m src.app                       # then open http://localhost:8000
 ```
 
-It needs the LanceDB index in `data/index` and the papers in `data/release/papers_clean.parquet` (both built by `src/indexing`). Startup takes a little while because it loads the embedding model and embeds every paper's title and abstract once.
+It needs the papers in `data/papers_clean.parquet` and the LanceDB index built from them in `data/index` (see `src/pipeline/README.md`, Setup). Startup takes a few seconds to load the embedding model. Paper title/abstract vectors are read from the index; if it was built before they were stored, they're embedded at startup instead, which takes longer.
 
-Options: `--provider groq|gemini`, `--model`, `--port`, `--papers`, `--index-dir`, `--briefs-dir`.
+Options: `--provider nvidia|groq|gemini` (default `nvidia`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`.
 
 ## What each button costs
 
