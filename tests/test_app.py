@@ -127,8 +127,16 @@ def test_llm_errors_become_messages(tmp_path):
 def test_index_and_info_are_served(setup):
     client, _ = setup
 
-    assert "Research Insight Agent" in client.get("/").text
-    assert client.get("/static/app.js").status_code == 200
+    page = client.get("/")
+    assert "Research Insight Agent" in page.text
+    assert page.headers["cache-control"] == "no-cache"
+    # asset links carry a version so browsers don't reuse an old app.js or app.css
+    assert "/static/app.js?v=" in page.text and "/static/app.css?v=" in page.text
+
+    script = client.get("/static/app.js")
+    assert script.status_code == 200
+    assert script.headers["cache-control"] == "no-cache"
+    assert client.get("/static/kpmg-logo.png").status_code == 200
     info = client.get("/api/info").json()
     assert info["corpus"]["papers"] == 2
     assert info["model"] == "fake-model"

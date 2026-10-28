@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -228,11 +228,30 @@ def create_app(retriever, llm, store, corpus=None, examples=None):
 
     @app.get("/")
     def index():
-        return FileResponse(STATIC_DIR / "index.html")
+        # Versioned asset links, so a browser never pairs a new page with an old
+        # cached app.css or app.js after the code changes
+        version = static_version()
+        html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        for name in ("app.css", "app.js"):
+            html = html.replace(f'/static/{name}"', f'/static/{name}?v={version}"')
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+    @app.middleware("http")
+    async def revalidate_static(request, call_next):
+        # Browsers may keep files with no cache header; make them check for a newer one
+        response = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     return app
+
+
+def static_version():
+    """Changes whenever app.css or app.js changes on disk."""
+    return str(int(max((STATIC_DIR / name).stat().st_mtime for name in ("app.css", "app.js"))))
 
 
 def corpus_info(papers_path):
