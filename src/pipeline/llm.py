@@ -1,10 +1,10 @@
 # LLM client used to generate summaries from retrieved research
 #
-# NVIDIA is the default: its free trial API takes the longer prompts that come with
-# the results and limitations passages, which Groq's free tier (8,000 tokens a
-# minute) rejects. Groq uses the same model and settings as Lakshmee's
-# summarization testing (src/summarization/README.md), so it's kept for comparing
-# with earlier runs. Gemini is available through Google's OpenAI-compatible endpoint.
+# Groq is the default and uses the same model and settings as Lakshmee's
+# summarization testing (src/summarization/README.md). Its free tier allows 8,000
+# tokens a minute, less than a summary prompt with the results and limitations
+# passages (about 9,000-12,000), so it needs a paid Groq plan for full runs.
+# NVIDIA (free trial, larger limits) and Gemini are available with --provider.
 
 import os
 import re
@@ -34,7 +34,7 @@ PROVIDERS = {
     },
 }
 
-DEFAULT_PROVIDER = "nvidia"
+DEFAULT_PROVIDER = "groq"
 DEFAULT_MODEL = PROVIDERS[DEFAULT_PROVIDER]["model"]
 
 # Waits (seconds) when a rate limit error doesn't say how long to wait

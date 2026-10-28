@@ -8,13 +8,13 @@ The look follows the team's KPMG-1J Figma file (Home Page and Research Page fram
 
 ```bash
 pip install -r requirements.txt
-export NVIDIA_API_KEY=nvapi-...         # free trial key at build.nvidia.com
+export GROQ_API_KEY=...                 # or NVIDIA_API_KEY / GEMINI_API_KEY with --provider
 python -m src.app                       # then open http://localhost:8000
 ```
 
 It needs the papers in `data/papers_clean.parquet` and the LanceDB index built from them in `data/index` (see `src/pipeline/README.md`, Setup). Startup takes a few seconds to load the embedding model. Paper title/abstract vectors are read from the index; if it was built before they were stored, they're embedded at startup instead, which takes longer.
 
-Options: `--provider nvidia|groq|gemini` (default `nvidia`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`.
+Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`.
 
 ## What each button costs
 

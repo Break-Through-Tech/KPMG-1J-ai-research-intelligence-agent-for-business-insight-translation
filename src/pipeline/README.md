@@ -7,7 +7,7 @@ question
   -> LanceCombinedRetriever (src/rag/lance_retriever.py)  top 5 papers + best supporting chunk each
   -> format_retrieved_content                             paper ID, title, abstract, section, chunk text
   -> build_summarization_prompt (src/summarization)       Lakshmee's two-shot prompt
-  -> LLM (NVIDIA Nemotron Ultra, or Groq / Gemini)       4-section summary with [paper_id] citations
+  -> LLM (Groq openai/gpt-oss-120b, or NVIDIA / Gemini)  4-section summary with [paper_id] citations
   -> check_citations                                      flags cited papers that were never retrieved
   -> build_business_prompt (src/translation)              reads ONLY the summary, never the paper text
   -> LLM (same model)                                     5-section business brief with [paper_id] citations
@@ -37,7 +37,7 @@ It is a separate step, not a longer summary prompt, so the facts (step 1) and th
 | File | Purpose |
 |---|---|
 | `pipeline.py` | `answer_query()`, `run_benchmark()`, formatting and citation check |
-| `llm.py` | `LLM` client for NVIDIA (default), Groq (same model and settings as the summarization testing) or Gemini |
+| `llm.py` | `LLM` client for Groq (default, same model and settings as the summarization testing), NVIDIA or Gemini |
 | `cli.py` | command line entry point |
 
 ## Setup
@@ -62,8 +62,8 @@ python -m src.indexing.cli
 The index and `--papers` must come from the same release. The retriever refuses to start if the index has papers the corpus file doesn't.
 
 3. Set an API key, one of:
-   - NVIDIA (default): `export NVIDIA_API_KEY=nvapi-...`, free trial key at build.nvidia.com. The default model is `nvidia/nemotron-3-ultra-550b-a55b` (about 2 minutes a question, careful with numbers and citations); `--model openai/gpt-oss-20b` is faster (about 20 seconds) but less careful. It's the default because with the results and limitations passages, a summary prompt is about 9,000–12,000 tokens, more than Groq's free tier allows per minute (8,000). If a model rejects `reasoning_effort`, add `--reasoning-effort none`.
-   - Groq: `export GROQ_API_KEY=...`, free key at console.groq.com, then add `--provider groq` to the commands below. Its free tier allows 8,000 tokens a minute, less than one summary prompt now needs, so use it only with a paid Groq plan.
+   - Groq (default): `export GROQ_API_KEY=...`, key at console.groq.com. With the results and limitations passages a summary prompt is about 9,000–12,000 tokens, more than Groq's free tier allows per minute (8,000), so use a paid Groq plan or one of the providers below if requests are rejected as too large.
+   - NVIDIA: `export NVIDIA_API_KEY=nvapi-...`, free trial key at build.nvidia.com, then add `--provider nvidia` to the commands below. The default model is `nvidia/nemotron-3-ultra-550b-a55b` (about 2 minutes a question, careful with numbers and citations); `--model openai/gpt-oss-20b` is faster (about 20 seconds) but less careful. If a model rejects `reasoning_effort`, add `--reasoning-effort none`.
    - Gemini: `export GEMINI_API_KEY=...`, free key at aistudio.google.com, then add `--provider gemini` to the commands below. Answers from a different model aren't directly comparable with the Groq benchmark runs, so save them to their own `--output` file.
 
 ## Run
@@ -121,7 +121,7 @@ from src.pipeline.pipeline import answer_query
 from src.rag.lance_retriever import LanceCombinedRetriever
 
 retriever = LanceCombinedRetriever()  # data/papers_clean.parquet and data/index
-llm = LLM()  # NVIDIA by default, or LLM(provider="groq") / LLM(provider="gemini")
+llm = LLM()  # Groq by default, or LLM(provider="nvidia") / LLM(provider="gemini")
 
 result = answer_query("How can companies check AI models for bias?", retriever, llm)
 print(result["summary"])
