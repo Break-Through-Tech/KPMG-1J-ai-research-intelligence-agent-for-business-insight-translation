@@ -77,6 +77,7 @@ const state = {
   tab: "brief",
   followup: "",
   followupBusy: false,
+  reveal: false,      // fade in the Bottom Line once, when a brief first opens
 };
 
 const app = document.getElementById("app");
@@ -141,7 +142,7 @@ function indexedText(long = true) {
   const c = corpus();
   if (!c.papers) return state.info ? "Corpus not loaded" : "Loading…";
   const count = `${c.papers.toLocaleString("en-US")} papers indexed${long ? " from arXiv" : ""}`;
-  return long ? `${count} · ${formatDate(c.first_date, false)} – ${formatDate(c.last_date)}` : count;
+  return long ? `${count}, ${formatDate(c.first_date, false)} to ${formatDate(c.last_date)}` : count;
 }
 
 function topicLabel(id) {
@@ -180,16 +181,17 @@ function filterPayload() {
 function filtersText(filters) {
   if (!filters) return "";
   const parts = [];
-  if (filters.since) parts.push(`Since ${formatDate(filters.since, false)}`);
-  if (filters.until) parts.push(`Until ${formatDate(filters.until, false)}`);
+  if (filters.since) parts.push(`since ${formatDate(filters.since, false)}`);
+  if (filters.until) parts.push(`until ${formatDate(filters.until, false)}`);
   if (filters.categories && filters.categories.length) parts.push(filters.categories.map(topicLabel).join(", "));
-  return parts.join(" · ");
+  return parts.join("; ");
 }
 
 // ---------- formatting LLM output ----------
 
 // "[2609.38107v1]" or "[2609.38107v1, 2609.38108v1]" -> numbered links to the source cards
 const CITE = /\[(\d{4}\.\d{4,5}(?:v\d+)?(?:\s*[,;]\s*\d{4}\.\d{4,5}(?:v\d+)?)*)\]/g;
+const CITE_SPACED = new RegExp("\\s*" + CITE.source, "g");
 const BARE_ID = /\b(\d{4}\.\d{4,5})(?:v\d+)?\b/g;
 
 function sourceNumber(id, sources) {
@@ -199,10 +201,14 @@ function sourceNumber(id, sources) {
 function citeLink(id, sources) {
   const n = sourceNumber(id, sources);
   if (!n) {
-    return `<span class="cite cite--missing" title="Not in the retrieved papers">[${esc(id)}?]</span>`;
+    return `<span class="cite-missing" title="Not in the retrieved papers">${esc(id)}?</span>`;
   }
   const title = esc(sources[n - 1].title);
-  return `<a class="cite" href="#src-${n}" data-src="${n}" title="${title} (${esc(baseId(id))})">[${n}]</a>`;
+  return `<a class="cite" href="#src-${n}" data-src="${n}" title="${title} (arXiv ${esc(baseId(id))})">${n}</a>`;
+}
+
+function citeGroup(ids, sources) {
+  return `<sup class="cites">${citeIds(ids).map((id) => citeLink(id, sources)).join('<span aria-hidden="true">,</span>')}</sup>`;
 }
 
 // The ids inside one [...] group, without repeats
@@ -215,7 +221,8 @@ function inline(text, sources) {
   // text is already escaped
   return text
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(CITE, (_, ids) => citeIds(ids).map((id) => citeLink(id, sources)).join(""));
+    // citations sit right after the word or full stop they support
+    .replace(CITE_SPACED, (_, ids) => citeGroup(ids, sources));
 }
 
 // Split our fixed output format into [{heading, lines}] sections
@@ -279,7 +286,11 @@ function renderBody(lines, sources) {
 function renderSourcesSection(lines, sources) {
   const ids = [...new Set(lines.join(" ").match(BARE_ID) || [])];
   if (!ids.length) return renderBody(lines, sources);
-  return `<p class="source-id-list">${ids.map((id) => `${citeLink(id, sources)} ${esc(id)}`).join(" &nbsp; ")}</p>`;
+  return `<p class="source-id-list">${ids.map((id) => {
+    const n = sourceNumber(id, sources);
+    const title = n ? sources[n - 1].title : `arXiv ${baseId(id)}`;
+    return `${citeGroup(id, sources)} ${esc(title)}`;
+  }).join("<br>")}</p>`;
 }
 
 function meter(level) {
@@ -299,7 +310,8 @@ function renderDoc(text, sources, labels, evidenceLevel) {
     if (name === "evidence strength") {
       body = meter(evidenceLevel) + body.replace(/^<p>(High|Medium|Low)([.:]?)/, "<p><strong>$1$2</strong>");
     }
-    const heading = section.heading ? `<h2>${esc(section.heading)}</h2>` : "";
+    const label = section.heading.charAt(0) + section.heading.slice(1).toLowerCase();
+    const heading = section.heading ? `<h2>${esc(label)}</h2>` : "";
     return `<section${cls}>${heading}${body}</section>`;
   }).join("");
 }
@@ -408,13 +420,14 @@ function statusPill(status) {
 function listRows(briefs) {
   return briefs.map((b) => {
     const meta = [
-      (AUDIENCES[b.audience] || { label: b.audience || "" }).label,
-      b.evidence ? `Evidence: ${b.evidence}` : "",
+      `For ${(AUDIENCES[b.audience] || { label: b.audience || "" }).label}`,
+      b.evidence ? `${b.evidence} evidence` : "",
       b.papers !== undefined ? `${b.papers} papers` : "",
       formatDate(b.created_at),
-    ].filter(Boolean).join(" · ");
+    ].filter(Boolean);
     return `<a class="list-row" href="#/brief/${esc(b.id)}">
-      <span><span class="title">${esc(b.query)}</span><span class="meta">${esc(meta)}</span></span>
+      <span><span class="title">${esc(b.query)}</span>
+        <span class="meta">${meta.map((m) => `<span>${esc(m)}</span>`).join("")}</span></span>
       ${statusPill(b.status)}
     </a>`;
   }).join("");
@@ -423,15 +436,15 @@ function listRows(briefs) {
 // ---------- Home ----------
 
 const HOW = [
-  ["RETRIEVE", "Find the best papers", "Hybrid keyword and meaning search over every chunk, ranked into the top papers."],
-  ["SUMMARIZE", "Stick to the sources", "Objective, method, findings and limitations, using only the retrieved papers."],
-  ["TRANSLATE", "Turn findings into a brief", "Bottom line, why it matters, what to do, evidence strength, caveat and sources."],
-  ["CHECK", "Verify, then review", "Every citation is checked against what was retrieved, then a KPMG advisor approves it."],
+  ["Retrieve", "Finds the most relevant recent papers by keyword and meaning."],
+  ["Summarize", "States objective, method, findings and limitations, using only those papers."],
+  ["Translate", "Turns the summary into a six-part brief for your audience."],
+  ["Check", "Verifies every citation, then a KPMG advisor approves the brief."],
 ];
 
 function progressList() {
   return `<ol class="progress" id="progress" aria-label="Progress">
-    ${HOW.map(([kicker, title], i) => `<li data-step="${i}"><span class="dot"></span>${esc(kicker[0] + kicker.slice(1).toLowerCase())}: ${esc(title)}</li>`).join("")}
+    ${HOW.map(([stage], i) => `<li data-step="${i}"><span class="dot"></span>${esc(stage)}</li>`).join("")}
   </ol>`;
 }
 
@@ -506,30 +519,25 @@ function renderHome(scrollTo) {
     </section>
 
     <div class="content">
-      ${examples.length ? `<section class="section" aria-labelledby="examples-h">
-        <h2 class="eyebrow" id="examples-h">Try a question from our benchmark</h2>
-        <div class="grid-cards">
-          ${examples.map((q, i) => `<button type="button" class="q-card" data-example="${i}">
-            <span class="q">${esc(q)}</span>
-            <span class="go">Generate the brief ${ARROW}</span>
-          </button>`).join("")}
-        </div>
-      </section>` : ""}
+      <div class="home-columns">
+        ${examples.length ? `<section class="section" aria-labelledby="examples-h">
+          <h2 class="section-title" id="examples-h">Questions from our benchmark</h2>
+          <ul class="question-list">
+            ${examples.map((q, i) => `<li><button type="button" class="question-link" data-example="${i}">${esc(q)}</button></li>`).join("")}
+          </ul>
+        </section>` : ""}
 
-      <section class="section" id="how" aria-labelledby="how-h">
-        <h2 class="eyebrow" id="how-h">How every answer is built</h2>
-        <ol class="steps">
-          ${HOW.map(([kicker, title, text], i) => `<li class="step">
-            <span class="step-head"><span class="step-num">${i + 1}</span><span class="step-kicker">${kicker}</span></span>
-            <strong>${esc(title)}</strong>
-            <p>${esc(text)}</p>
-          </li>`).join("")}
-        </ol>
-      </section>
+        <section class="section" id="how" aria-labelledby="how-h">
+          <h2 class="section-title" id="how-h">How each brief is made</h2>
+          <ol class="stages">
+            ${HOW.map(([stage, text]) => `<li><strong>${esc(stage)}</strong><span>${esc(text)}</span></li>`).join("")}
+          </ol>
+        </section>
+      </div>
 
       <section class="section" id="recent" aria-labelledby="recent-h">
         <div class="section-head">
-          <h2 class="eyebrow" id="recent-h">Recent briefs</h2>
+          <h2 class="section-title" id="recent-h">Recent briefs</h2>
           ${state.briefs.length > recent.length ? '<a href="#/library">See all in the Library</a>' : ""}
         </div>
         <div class="list-panel">
@@ -721,7 +729,7 @@ function problemAlert(entry) {
 
 function sourceCard(s, n, isCited) {
   return `<div class="src${isCited ? " src--cited" : ""}" id="src-${n}">
-    <span class="id">[${n}] ${esc(baseId(s.paper_id))}</span>
+    <span class="id"><span class="num">${n}</span>arXiv ${esc(baseId(s.paper_id))}</span>
     <span class="name">${esc(s.title)}</span>
     ${s.section ? `<span class="where">Matched in: ${esc(s.section)}</span>` : ""}
     <a href="${esc(s.arxiv_url)}" target="_blank" rel="noopener">Open on arXiv</a>
@@ -755,7 +763,7 @@ function followupSection(record, entry) {
         <div class="fu-a">${renderBody(String(f.answer).split("\n"), record.sources)}</div>
         ${bad.length ? `<p class="warn">Cites papers that aren’t in the summary: ${esc(bad.join(", "))}.</p>` : ""}
         ${f.truncated ? '<p class="warn">The answer was cut off.</p>' : ""}
-        ${f.covered ? "" : `<div><button type="button" class="btn" data-research="${index}">Search new papers for this ${ARROW}</button></div>`}
+        ${f.covered ? "" : `<div><button type="button" class="btn" data-research="${index}">Search new papers for this</button></div>`}
       </div>`;
     }).join("")}
     <form class="followup-form" id="followup-form">
@@ -781,8 +789,8 @@ function briefPanel(record, entry, cited) {
   return `${problemAlert(entry)}
     <div class="brief-layout">
       <div class="brief-main">
-        <article class="card">
-          <div class="doc">${renderDoc(entry.brief, record.sources, null, entry.checks.evidence.level)}</div>
+        <article class="card brief-card">
+          <div class="doc${state.reveal ? " reveal" : ""}">${renderDoc(entry.brief, record.sources, null, entry.checks.evidence.level)}</div>
           <div class="actions">
             <button type="button" class="btn" id="print">Export PDF</button>
             <button type="button" class="btn" id="copy-email">Copy for email</button>
@@ -818,7 +826,7 @@ function sourcesPanel(record, cited) {
       const isCited = cited.has(baseId(s.paper_id));
       return `<div class="src src-row${isCited ? " src--cited" : ""}" id="src-${i + 1}">
         <div class="body">
-          <span class="id">[${i + 1}] ${esc(baseId(s.paper_id))}${s.section ? ` · matched in ${esc(s.section)}` : ""}</span>
+          <span class="id"><span class="num">${i + 1}</span>arXiv ${esc(baseId(s.paper_id))}${s.section ? `, matched in ${esc(s.section)}` : ""}</span>
           <span class="name">${esc(s.title)}</span>
         </div>
         <div class="side">
@@ -886,7 +894,7 @@ function renderBrief() {
       <div class="meta">
         <span>Written for: <strong>${esc(audience.label)}</strong></span>
         <span>${record.sources.length} papers retrieved, ${briefCited.size} cited in the brief</span>
-        ${filters ? `<span>Filters: ${esc(filters)}</span>` : ""}
+        ${filters ? `<span>Papers ${esc(filters)}</span>` : ""}
         <span>Model: ${esc(record.model)}</span>
         <span>${esc(formatDate(record.created_at))}</span>
       </div>
@@ -905,6 +913,7 @@ function renderBrief() {
     </div>`;
 
   bindBrief();
+  state.reveal = false;
 }
 
 function selectTab(tab, focus) {
@@ -1030,6 +1039,7 @@ async function openBrief(id, tab) {
     if (!state.record || state.record.id !== record.id) {
       state.followup = "";
       state.tab = "brief";
+      state.reveal = true;
     }
     if (TABS.some(([t]) => t === tab)) state.tab = tab;
     state.record = record;
