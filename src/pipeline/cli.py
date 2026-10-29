@@ -103,8 +103,8 @@ def main():
         "--provider",
         choices=list(PROVIDERS),
         default=DEFAULT_PROVIDER,
-        help="LLM service: nvidia (NVIDIA_API_KEY, free key at build.nvidia.com), "
-             "groq (GROQ_API_KEY) or gemini (GEMINI_API_KEY)"
+        help="LLM service: groq (GROQ_API_KEY, default), "
+             "nvidia (NVIDIA_API_KEY, free key at build.nvidia.com) or gemini (GEMINI_API_KEY)"
     )
 
     parser.add_argument(

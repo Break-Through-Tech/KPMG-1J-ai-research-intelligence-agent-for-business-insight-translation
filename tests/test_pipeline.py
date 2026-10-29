@@ -49,8 +49,9 @@ class FakeRetriever:
         self.papers = papers
         self.calls = []
 
-    def search(self, query, top_k=5):
+    def search(self, query, top_k=5, filters=None):
         self.calls.append((query, top_k))
+        self.filters = filters
         return self.papers[:top_k]
 
 
@@ -176,8 +177,11 @@ from src.translation.prompts import (
     AUDIENCES,
     BUSINESS_SECTIONS,
     BUSINESS_SYSTEM_PROMPT,
+    CLIENT_CONTEXT_CHARS,
     FEW_SHOT_EXAMPLES,
-    build_business_prompt
+    build_business_prompt,
+    build_followup_prompt,
+    format_client_context
 )
 
 
@@ -426,3 +430,69 @@ def test_reasoning_effort_is_left_out_when_none(monkeypatch, effort, sent):
     llm.generate("system", "user")
 
     assert {k: v for k, v in completions.kwargs[0].items() if k == "reasoning_effort"} == sent
+
+
+def test_answer_query_passes_filters_only_when_set():
+    retriever = FakeRetriever(make_papers())
+    filters = {"since": "2026-10-01", "until": None, "categories": ["cs.CL"]}
+
+    answer_query("Q?", retriever, FakeLLM(), translate=False, filters=filters)
+    assert retriever.filters == filters
+
+    answer_query("Q?", retriever, FakeLLM(), translate=False)
+    assert retriever.filters is None
+
+
+def test_followup_flags_citations_not_in_the_summary():
+    from src.pipeline.pipeline import answer_followup
+
+    summary = "Key Findings: traces fail. [2609.38107v1]"
+    llm = FakeLLM("Only some traces fail. [2609.38107v1] Agents too. [2609.38108v1]")
+
+    answer = answer_followup("Q?", summary, "## Bottom Line\nNo.", make_papers(),
+                             "What about agents?", llm)
+
+    assert answer["covered"]
+    assert answer["citation_check"]["cited_not_in_summary"] == ["2609.38108"]
+    assert answer["citation_check"]["cited_not_retrieved"] == []
+
+
+def test_followup_not_covered_and_empty_question():
+    from src.pipeline.pipeline import answer_followup
+
+    llm = FakeLLM("Not covered: the summary has no cost figures.")
+    answer = answer_followup("Q?", "Key Findings: x. [2609.38107v1]", "", make_papers(),
+                             "  What does it cost?  ", llm)
+
+    assert not answer["covered"]
+    assert answer["question"] == "What does it cost?"
+
+    with pytest.raises(ValueError):
+        answer_followup("Q?", "Key Findings: x.", "", make_papers(), "   ", llm)
+
+
+def test_client_context_only_changes_the_prompt_when_given():
+    plain = build_business_prompt("Q?", "Summary text.")
+    assert "Client Context:" not in plain
+    assert build_business_prompt("Q?", "Summary text.", client=None) == plain
+    assert build_business_prompt("Q?", "Summary text.", client="") == plain
+
+    tailored = build_business_prompt("Q?", "Summary text.", client="Client: Northbank")
+    assert "Client Context:\nClient: Northbank" in tailored
+    assert tailored.index("Client Context:") < tailored.index("Business Question:")
+
+    followup = build_followup_prompt("Q?", "Summary.", "Brief.", "When?", client="Client: Northbank")
+    assert "Client: Northbank" in followup
+
+
+def test_format_client_context():
+    assert format_client_context(None) == ""
+    assert format_client_context({"name": "Only a name"}) == ""
+
+    text = format_client_context({"client": "Northbank", "industry": "Banking",
+                                  "objective": "Trust  AI\nexplanations", "notes": ""})
+    assert text == "Client: Northbank\nIndustry: Banking\nEngagement goal: Trust AI explanations"
+
+    long = format_client_context({"client": "A", "notes": "word " * 1000})
+    assert len(long) <= CLIENT_CONTEXT_CHARS + 1
+    assert long.endswith("…")

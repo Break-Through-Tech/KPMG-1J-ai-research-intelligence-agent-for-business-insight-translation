@@ -230,13 +230,60 @@ environments rather than live business systems. [2609.38108v1]
 ]
 
 
-def build_business_prompt(query, summary, audience=DEFAULT_AUDIENCE):
+# Client details from a project, used only by the brief and follow-up steps
+# (never the research summary). Capped so a long note can't blow up the prompt.
+CLIENT_CONTEXT_CHARS = 1200
+
+CLIENT_FIELDS = [
+    ("client", "Client"),
+    ("industry", "Industry"),
+    ("objective", "Engagement goal"),
+    ("notes", "Notes"),
+]
+
+CLIENT_INSTRUCTION = (
+    "Use the client context only to make Why It Matters and What To Do "
+    "specific to this client. It is not evidence: every research claim must "
+    "still come from the research summary."
+)
+
+
+def format_client_context(project):
+    """
+    Turn a project's details into a short block for the brief prompt.
+    Returns "" when the project has no client details.
+    """
+
+    if not project:
+        return ""
+
+    lines = []
+    for key, label in CLIENT_FIELDS:
+        value = " ".join(str(project.get(key) or "").split())
+        if value:
+            lines.append(f"{label}: {value}")
+
+    text = "\n".join(lines)
+    if len(text) > CLIENT_CONTEXT_CHARS:
+        text = text[:CLIENT_CONTEXT_CHARS].rstrip() + "…"
+    return text
+
+
+def client_section(client):
+    if not client:
+        return ""
+    return "Client Context:\n" + client.strip() + "\n" + CLIENT_INSTRUCTION + "\n\n"
+
+
+def build_business_prompt(query, summary, audience=DEFAULT_AUDIENCE, client=None):
     """
     Build the user prompt for the business translation step.
 
     query:    the user's original question
     summary:  the research summary from step 1 (src/summarization)
     audience: one of AUDIENCES
+    client:   optional client context (format_client_context); without it
+              the prompt is exactly the same as before projects existed
     """
 
     if not isinstance(query, str) or not query.strip():
@@ -260,6 +307,7 @@ def build_business_prompt(query, summary, audience=DEFAULT_AUDIENCE):
 
     prompt += "NOW WRITE A BRIEF FOR THIS NEW QUESTION:\n\n"
     prompt += "Audience: " + AUDIENCES[audience] + "\n\n"
+    prompt += client_section(client)
     prompt += "Business Question:\n" + query + "\n\n"
     prompt += "Research Summary:\n" + summary + "\n\n"
 
@@ -284,5 +332,81 @@ IMPORTANT CHECKS:
 - Under Sources, list only the paper IDs cited above.
 - Keep the brief under 200 words.
 """
+
+    return prompt
+
+
+# Follow-up questions on a brief: one LLM call that answers from the saved
+# research summary only (no new retrieval). When the summary can't answer,
+# the reply starts with NOT_COVERED so the UI can offer a new search.
+NOT_COVERED = "Not covered:"
+
+# Earlier follow-ups sent as context, newest last
+FOLLOWUP_HISTORY = 3
+
+FOLLOWUP_SYSTEM_PROMPT = f"""
+You are an advisor answering a follow-up question about a business brief
+on AI research.
+
+You will receive the original business question, the research summary
+the brief was written from, the brief itself, and the follow-up question.
+
+1. Use ONLY the research summary as evidence. The brief shows what was
+   already said; do not treat it as a source of new facts. Do not add
+   facts, numbers, model names, costs, timelines, or papers that are not
+   in the summary.
+2. Repeat numbers exactly as the summary writes them, and keep what each
+   number measures.
+3. Cite the paper ID in square brackets, e.g. [2609.38107v1], after every
+   claim taken from the summary. Cite only paper IDs in the summary.
+4. Keep the summary's warnings and limitations when they matter to the
+   answer.
+5. If the summary does not answer the follow-up, start your reply with
+   "{NOT_COVERED}" and say in one or two sentences what the research
+   would need to show. Do not guess. If it answers only part, answer that
+   part and say what is missing.
+6. Write for the stated audience, in plain English, in at most 120 words.
+   Use short paragraphs or up to 3 "- " bullets. No headings.
+"""
+
+
+def build_followup_prompt(query, summary, brief, followup,
+                          audience=DEFAULT_AUDIENCE, history=(), client=None):
+    """
+    Build the user prompt for a follow-up question.
+
+    history: earlier follow-ups on the same brief, each {"question", "answer"};
+             only the last FOLLOWUP_HISTORY are included
+    client:  optional client context (format_client_context)
+    """
+
+    if not isinstance(followup, str) or not followup.strip():
+        raise ValueError("Follow-up question cannot be empty.")
+
+    if not isinstance(summary, str) or not summary.strip():
+        raise ValueError("Research summary cannot be empty.")
+
+    if audience not in AUDIENCES:
+        raise ValueError(
+            f"Unknown audience {audience!r}, choose from {', '.join(AUDIENCES)}"
+        )
+
+    prompt = "Audience: " + AUDIENCES[audience] + "\n\n"
+    prompt += client_section(client)
+    prompt += "Original Business Question:\n" + query + "\n\n"
+    prompt += "Research Summary:\n" + summary + "\n\n"
+    prompt += "Business Brief:\n" + (brief or "(none)") + "\n\n"
+
+    earlier = list(history)[-FOLLOWUP_HISTORY:]
+    if earlier:
+        prompt += "Earlier Follow-ups:\n"
+        for item in earlier:
+            prompt += "Q: " + item["question"] + "\nA: " + item["answer"] + "\n\n"
+
+    prompt += "Follow-up Question:\n" + followup.strip() + "\n\n"
+    prompt += (
+        "Answer using only the research summary, with citations. "
+        f'If it does not answer the question, start with "{NOT_COVERED}"'
+    )
 
     return prompt

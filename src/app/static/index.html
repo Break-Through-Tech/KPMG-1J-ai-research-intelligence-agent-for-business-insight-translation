@@ -3,33 +3,60 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Research Insight Agent</title>
+<title>Research Workspace · KPMG Research Insight Agent</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header class="topbar">
-  <div class="topbar-inner">
-    <a class="brand" href="#/">
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="#93B4FF" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M18 18l7 7"></path><path d="M8 12h8M12 8v8"></path></svg>
-      <span class="brand-text">
-        <span class="brand-name">Research Insight Agent</span>
-        <span class="brand-sub">Prototype · KPMG 1J</span>
-      </span>
+<div class="app">
+
+  <!-- Sidebar: KPMG-1J Figma "Home Page" / "Research Page" frames -->
+  <aside class="sidebar" aria-label="Workspace">
+    <a class="brand" href="#/" aria-label="KPMG Research Insight Agent, home">
+      <img src="/static/kpmg-logo.png" alt="KPMG" class="brand-logo" width="180" height="72">
     </a>
-    <nav aria-label="Main" class="nav">
-      <a href="#/" data-nav="ask">Ask</a>
-      <a href="#/saved" data-nav="saved">Saved briefs</a>
-      <a href="#/how" data-nav="how">How it works</a>
+
+    <nav class="nav" aria-label="Main">
+      <span class="nav-label">WORKSPACE</span>
+      <a class="nav-item" href="#/" data-nav="home">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        Home
+      </a>
+      <a class="nav-item" href="#/projects" data-nav="projects">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        Projects
+      </a>
+      <a class="nav-item" href="#/research" data-nav="research">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        Research
+      </a>
+      <a class="nav-item" href="#/library" data-nav="library">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h5v16H4zM10 4h5v16h-5zM16 5l4 1-3 15-4-1"/></svg>
+        Library
+      </a>
+      <a class="nav-item" href="#/review" data-nav="review">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>
+        Review Queue
+        <span class="count" id="review-count" hidden></span>
+      </a>
     </nav>
-    <div class="corpus">
-      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="#5BD69A"></circle></svg>
-      <span id="corpus-text">Loading…</span>
+
+    <div class="account">
+      <span class="avatar" aria-hidden="true">1J</span>
+      <span class="account-name">
+        <strong>Research Insight Agent</strong>
+        <span id="model-text">Prototype · KPMG 1J</span>
+      </span>
     </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar" id="topbar"></header>
+    <main id="app"></main>
   </div>
-</header>
-<main id="app" class="page"></main>
+</div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script src="/static/app.js"></script>
 </body>

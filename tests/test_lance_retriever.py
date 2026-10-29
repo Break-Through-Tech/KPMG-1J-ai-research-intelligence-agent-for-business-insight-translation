@@ -47,16 +47,26 @@ def make_chunks():
                 "chunk_id": f"{paper_id}::{i:04d}", "paper_id": paper_id, "version": 1, "chunk_index": i,
                 "title": title, "authors": ["Jane Doe"], "arxiv_url": f"http://arxiv.org/abs/{paper_id}v1",
                 "section": section, "section_type": section_type,
-                "published_date": "2026-09-01", "primary_category": "cs.AI", "categories": ["cs.AI"],
+                "published_date": META[paper_id][0], "primary_category": META[paper_id][1],
+                "categories": [META[paper_id][1]],
                 "text": text, "text_for_embedding": f"{title}\nSection: {section}\n\n{text}",
             })
     return pd.DataFrame(rows)
 
 
+# paper id -> (published date, primary category), for the filter tests
+META = {
+    "2609.00001": ("2026-09-01", "cs.CL"),
+    "2609.00002": ("2026-09-10", "cs.RO"),
+    "2609.00003": ("2026-09-20", "cs.LG"),
+}
+
+
 def make_papers():
     return pd.DataFrame([
         {"arxiv_id": f"{paper_id}v1", "base_id": paper_id, "version": 1,
-         "title": title, "abstract_clean": abstract}
+         "title": title, "abstract_clean": abstract,
+         "published_date": META[paper_id][0], "primary_category": META[paper_id][1]}
         for paper_id, (title, abstract, _) in PAPERS.items()
     ])
 
@@ -69,7 +79,8 @@ def build_index(folder, embedder, paper_vectors=True):
         update_paper_vectors(index_dir, table, make_papers(), embedder)
 
     papers_path = folder / "papers_clean.parquet"
-    make_papers()[["arxiv_id", "title", "abstract_clean"]].to_parquet(papers_path)
+    make_papers()[["arxiv_id", "title", "abstract_clean", "published_date",
+                   "primary_category"]].to_parquet(papers_path)
 
     return str(papers_path), str(index_dir)
 
@@ -219,3 +230,57 @@ def test_refuses_corpus_missing_indexed_papers(corpus, embedder, tmp_path):
 
     with pytest.raises(ValueError, match="missing"):
         LanceRetriever(papers_path=str(papers_path), index_dir=index_dir, embedder=embedder)
+
+
+# ---------- filters ----------
+
+def ids(results):
+    return {r["paper_id"] for r in results}
+
+
+def test_since_filter_drops_older_papers(retriever):
+    results = retriever.search("financial audit answers", top_k=3,
+                               filters={"since": "2026-09-05"})
+
+    assert ids(results) == {"2609.00002v1", "2609.00003v1"}
+
+
+def test_until_and_category_filters(retriever):
+    assert ids(retriever.search("adapters", top_k=3, filters={"until": "2026-09-05"})) == {"2609.00001v1"}
+    assert ids(retriever.search("financial audit answers", top_k=3,
+                                filters={"categories": ["cs.LG", "cs.RO"]})) == {"2609.00002v1", "2609.00003v1"}
+
+
+def test_filter_with_no_matches_returns_nothing(retriever):
+    assert retriever.search("adapters", top_k=3, filters={"since": "2027-01-01"}) == []
+
+
+def test_empty_filters_change_nothing(retriever):
+    plain = retriever.search("financial audit answers", top_k=3)
+    empty = retriever.search("financial audit answers", top_k=3,
+                             filters={"since": None, "until": "", "categories": []})
+
+    assert [r["paper_id"] for r in empty] == [r["paper_id"] for r in plain]
+
+
+@pytest.mark.parametrize("filters", [
+    {"since": "last week"},
+    {"until": "2026-09-01'; DROP TABLE chunks; --"},
+    {"categories": ["cs.CL') OR (1=1"]},
+    {"since": "2026-10-01", "until": "2026-09-01"},
+])
+def test_bad_filters_are_rejected(retriever, filters):
+    with pytest.raises(ValueError):
+        retriever.search("adapters", top_k=1, filters=filters)
+
+
+def test_filters_need_dates_in_the_papers_file(corpus, embedder, tmp_path):
+    _, index_dir = corpus
+    old_file = tmp_path / "old_papers.parquet"
+    make_papers()[["arxiv_id", "title", "abstract_clean"]].to_parquet(old_file)
+
+    retriever = LanceCombinedRetriever(papers_path=str(old_file), index_dir=index_dir, embedder=embedder)
+
+    assert len(retriever.search("adapters", top_k=1)) == 1
+    with pytest.raises(ValueError, match="no dates or categories"):
+        retriever.search("adapters", top_k=1, filters={"since": "2026-09-05"})
