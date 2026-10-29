@@ -31,6 +31,15 @@
 
 **Provide step-by-step instructions so someone else can run your code and reproduce your results. Depending on your setup, include:**
 
+To run the web UI (from the repo root, with the virtual environment active:
+source .venv/bin/activate):
+
+    export GROQ_API_KEY=your-key-here
+    python -m src.app --papers data/release/papers_clean.parquet
+
+Then open http://localhost:8000. Restart the server after pulling new code,
+and hard refresh the browser (Cmd+Shift+R).
+
 * How to clone the repository
 * How to install dependencies
 * How to set up the environment
