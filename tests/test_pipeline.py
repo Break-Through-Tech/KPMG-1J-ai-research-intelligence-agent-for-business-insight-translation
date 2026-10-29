@@ -177,8 +177,11 @@ from src.translation.prompts import (
     AUDIENCES,
     BUSINESS_SECTIONS,
     BUSINESS_SYSTEM_PROMPT,
+    CLIENT_CONTEXT_CHARS,
     FEW_SHOT_EXAMPLES,
-    build_business_prompt
+    build_business_prompt,
+    build_followup_prompt,
+    format_client_context
 )
 
 
@@ -466,3 +469,30 @@ def test_followup_not_covered_and_empty_question():
 
     with pytest.raises(ValueError):
         answer_followup("Q?", "Key Findings: x.", "", make_papers(), "   ", llm)
+
+
+def test_client_context_only_changes_the_prompt_when_given():
+    plain = build_business_prompt("Q?", "Summary text.")
+    assert "Client Context:" not in plain
+    assert build_business_prompt("Q?", "Summary text.", client=None) == plain
+    assert build_business_prompt("Q?", "Summary text.", client="") == plain
+
+    tailored = build_business_prompt("Q?", "Summary text.", client="Client: Northbank")
+    assert "Client Context:\nClient: Northbank" in tailored
+    assert tailored.index("Client Context:") < tailored.index("Business Question:")
+
+    followup = build_followup_prompt("Q?", "Summary.", "Brief.", "When?", client="Client: Northbank")
+    assert "Client: Northbank" in followup
+
+
+def test_format_client_context():
+    assert format_client_context(None) == ""
+    assert format_client_context({"name": "Only a name"}) == ""
+
+    text = format_client_context({"client": "Northbank", "industry": "Banking",
+                                  "objective": "Trust  AI\nexplanations", "notes": ""})
+    assert text == "Client: Northbank\nIndustry: Banking\nEngagement goal: Trust AI explanations"
+
+    long = format_client_context({"client": "A", "notes": "word " * 1000})
+    assert len(long) <= CLIENT_CONTEXT_CHARS + 1
+    assert long.endswith("…")

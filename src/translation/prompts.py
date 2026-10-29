@@ -230,13 +230,60 @@ environments rather than live business systems. [2609.38108v1]
 ]
 
 
-def build_business_prompt(query, summary, audience=DEFAULT_AUDIENCE):
+# Client details from a project, used only by the brief and follow-up steps
+# (never the research summary). Capped so a long note can't blow up the prompt.
+CLIENT_CONTEXT_CHARS = 1200
+
+CLIENT_FIELDS = [
+    ("client", "Client"),
+    ("industry", "Industry"),
+    ("objective", "Engagement goal"),
+    ("notes", "Notes"),
+]
+
+CLIENT_INSTRUCTION = (
+    "Use the client context only to make Why It Matters and What To Do "
+    "specific to this client. It is not evidence: every research claim must "
+    "still come from the research summary."
+)
+
+
+def format_client_context(project):
+    """
+    Turn a project's details into a short block for the brief prompt.
+    Returns "" when the project has no client details.
+    """
+
+    if not project:
+        return ""
+
+    lines = []
+    for key, label in CLIENT_FIELDS:
+        value = " ".join(str(project.get(key) or "").split())
+        if value:
+            lines.append(f"{label}: {value}")
+
+    text = "\n".join(lines)
+    if len(text) > CLIENT_CONTEXT_CHARS:
+        text = text[:CLIENT_CONTEXT_CHARS].rstrip() + "…"
+    return text
+
+
+def client_section(client):
+    if not client:
+        return ""
+    return "Client Context:\n" + client.strip() + "\n" + CLIENT_INSTRUCTION + "\n\n"
+
+
+def build_business_prompt(query, summary, audience=DEFAULT_AUDIENCE, client=None):
     """
     Build the user prompt for the business translation step.
 
     query:    the user's original question
     summary:  the research summary from step 1 (src/summarization)
     audience: one of AUDIENCES
+    client:   optional client context (format_client_context); without it
+              the prompt is exactly the same as before projects existed
     """
 
     if not isinstance(query, str) or not query.strip():
@@ -260,6 +307,7 @@ def build_business_prompt(query, summary, audience=DEFAULT_AUDIENCE):
 
     prompt += "NOW WRITE A BRIEF FOR THIS NEW QUESTION:\n\n"
     prompt += "Audience: " + AUDIENCES[audience] + "\n\n"
+    prompt += client_section(client)
     prompt += "Business Question:\n" + query + "\n\n"
     prompt += "Research Summary:\n" + summary + "\n\n"
 
@@ -323,12 +371,13 @@ the brief was written from, the brief itself, and the follow-up question.
 
 
 def build_followup_prompt(query, summary, brief, followup,
-                          audience=DEFAULT_AUDIENCE, history=()):
+                          audience=DEFAULT_AUDIENCE, history=(), client=None):
     """
     Build the user prompt for a follow-up question.
 
     history: earlier follow-ups on the same brief, each {"question", "answer"};
              only the last FOLLOWUP_HISTORY are included
+    client:  optional client context (format_client_context)
     """
 
     if not isinstance(followup, str) or not followup.strip():
@@ -343,6 +392,7 @@ def build_followup_prompt(query, summary, brief, followup,
         )
 
     prompt = "Audience: " + AUDIENCES[audience] + "\n\n"
+    prompt += client_section(client)
     prompt += "Original Business Question:\n" + query + "\n\n"
     prompt += "Research Summary:\n" + summary + "\n\n"
     prompt += "Business Brief:\n" + (brief or "(none)") + "\n\n"

@@ -118,14 +118,16 @@ def _source_info(paper):
     }
 
 
-def translate_summary(query, summary, papers, llm, audience=DEFAULT_AUDIENCE):
+def translate_summary(query, summary, papers, llm, audience=DEFAULT_AUDIENCE,
+                      client=None):
     """
     Step 2: turn the research summary into a business brief.
     The LLM only sees the summary, so the brief can't draw on anything
     step 1 didn't say. cited_not_in_summary should always be empty.
+    client: optional client context, which only tailors the advice
     """
 
-    prompt = build_business_prompt(query, summary, audience)
+    prompt = build_business_prompt(query, summary, audience, client)
 
     brief = llm.generate(BUSINESS_SYSTEM_PROMPT, prompt)
 
@@ -154,7 +156,7 @@ def check_against_summary(text, summary, papers):
 
 
 def answer_followup(query, summary, brief, papers, followup, llm,
-                    audience=DEFAULT_AUDIENCE, history=()):
+                    audience=DEFAULT_AUDIENCE, history=(), client=None):
     """
     Answer a follow-up question about a brief from its saved research summary
     (one LLM call, no new retrieval). covered is False when the summary doesn't
@@ -166,7 +168,7 @@ def answer_followup(query, summary, brief, papers, followup, llm,
         raise ValueError("Please type a follow-up question.")
 
     prompt = build_followup_prompt(query, summary, brief, followup.strip(),
-                                   audience, history)
+                                   audience, history, client)
 
     answer = llm.generate(FOLLOWUP_SYSTEM_PROMPT, prompt).strip()
 
@@ -180,7 +182,7 @@ def answer_followup(query, summary, brief, papers, followup, llm,
 
 
 def answer_query(query, retriever, llm, top_k=5, translate=True,
-                 audience=DEFAULT_AUDIENCE, filters=None):
+                 audience=DEFAULT_AUDIENCE, filters=None, client=None):
     """
     Run one question through retrieval, summarization and (unless
     translate=False) business translation.
@@ -190,6 +192,8 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
     llm:       anything with generate(system_prompt, user_prompt)
     filters:   optional {"since", "until", "categories"} for retrievers that
                support them (src/rag/lance_retriever.py)
+    client:    optional client context for the brief step only; retrieval
+               and the research summary never see it
     """
 
     if not isinstance(query, str) or not query.strip():
@@ -229,7 +233,7 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
 
     if translate:
         result["business_insight"] = translate_summary(
-            query, summary, papers, llm, audience
+            query, summary, papers, llm, audience, client
         )
 
     return result

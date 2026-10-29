@@ -3,8 +3,9 @@
 //   #/brief/<id>  a saved brief (Brief / Research summary / Sources / Review tabs);
 //                 #/brief/<id>/review opens a tab directly
 //   #/research    the most recent brief
-//   #/library     every saved brief
+//   #/library     every saved brief, with filters
 //   #/review      briefs waiting for review or with changes requested
+//   #/projects    client projects; #/projects/new, #/project/<id>, #/project/<id>/edit
 // All LLM output is HTML-escaped before it is formatted.
 
 const AUDIENCES = {
@@ -78,6 +79,12 @@ const state = {
   followup: "",
   followupBusy: false,
   reveal: false,      // fade in the Bottom Line once, when a brief first opens
+  page: "home",       // "home" or "project": where an ask redraws while it runs
+  projects: [],       // project list (with brief_ids)
+  project: null,      // project currently open
+  projectId: "",      // project picked on Home for the next question
+  showArchived: false,
+  lib: { q: "", audience: "", status: "", evidence: "", date: "", project: "" },
 };
 
 const app = document.getElementById("app");
@@ -95,10 +102,10 @@ function baseId(id) {
   return String(id).trim().replace(/v\d+$/, "");
 }
 
-async function api(path, body) {
+async function api(path, body, method) {
   const options = body === undefined
-    ? {}
-    : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+    ? { method: method || "GET" }
+    : { method: method || "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
   const response = await fetch(path, options);
   let data = null;
   try { data = await response.json(); } catch { /* no body */ }
@@ -417,7 +424,16 @@ function statusPill(status) {
   return `<span class="status ${s.cls}">${esc(s.pill)}</span>`;
 }
 
-function listRows(briefs) {
+// brief id -> the projects it's filed in
+function projectMap() {
+  const map = {};
+  state.projects.forEach((p) => (p.brief_ids || []).forEach((id) => (map[id] ||= []).push(p)));
+  return map;
+}
+
+// options.projects: show project tags; options.removable: add a Remove button (project page)
+function listRows(briefs, options = {}) {
+  const filed = options.projects ? projectMap() : {};
   return briefs.map((b) => {
     const meta = [
       `For ${(AUDIENCES[b.audience] || { label: b.audience || "" }).label}`,
@@ -425,11 +441,17 @@ function listRows(briefs) {
       b.papers !== undefined ? `${b.papers} papers` : "",
       formatDate(b.created_at),
     ].filter(Boolean);
-    return `<a class="list-row" href="#/brief/${esc(b.id)}">
+    const tags = (filed[b.id] || []).map((p) => `<span class="tag">${esc(p.name)}</span>`).join("");
+    const row = `<a class="list-row" href="#/brief/${esc(b.id)}">
       <span><span class="title">${esc(b.query)}</span>
-        <span class="meta">${meta.map((m) => `<span>${esc(m)}</span>`).join("")}</span></span>
+        <span class="meta">${meta.map((m) => `<span>${esc(m)}</span>`).join("")}</span>
+        ${tags ? `<span class="tags">${tags}</span>` : ""}</span>
       ${statusPill(b.status)}
     </a>`;
+    if (!options.removable) return row;
+    return `<div class="list-item">${row}
+      <button type="button" class="btn btn--link unlink" data-unlink="${esc(b.id)}"
+        aria-label="Remove “${esc(b.query)}” from this project">Remove</button></div>`;
   }).join("");
 }
 
@@ -462,28 +484,18 @@ function topicChips() {
   </div>`;
 }
 
-function renderHome(scrollTo) {
+// The question box, audience chips and filters, shared by Home and project pages
+function askControls(inProject) {
   const c = corpus();
   const f = state.filters;
-  setNav("home");
-  topbarTitle("RESEARCH WORKSPACE");
+  const active = state.projects.filter((p) => p.status !== "archived");
+  if (!active.some((p) => p.id === state.projectId)) state.projectId = "";
 
-  const examples = (state.info && state.info.examples) || [];
-  const recent = state.briefs.slice(0, 5);
-
-  app.className = "";
-  app.innerHTML = `
-    <section class="hero" aria-labelledby="hero-h">
-      <div class="hero-inner">
-        <div class="hero-head">
-          <h1 id="hero-h">What Do You Want to Understand?</h1>
-          <p class="hero-sub">Ask a research question, search through recent papers, and receive a concise summary and business brief with sources.</p>
-        </div>
-
+  return `
         <form class="search search--hero" id="ask-form" role="search">
           ${SEARCH("")}
           <label for="question" class="sr-only">Research question</label>
-          <textarea id="question" rows="1" placeholder="Search Research Topic">${esc(state.question)}</textarea>
+          <textarea id="question" rows="1" placeholder="${inProject ? "Ask a research question for this client" : "Search Research Topic"}">${esc(state.question)}</textarea>
           <button class="btn-research" type="submit" id="generate"${state.busy ? " disabled" : ""}>
             ${state.busy ? "Researching…" : "Research"} ${ARROW}
           </button>
@@ -500,6 +512,11 @@ function renderHome(scrollTo) {
               `<button type="button" class="chip" data-audience="${id}" aria-pressed="${id === state.audience}">${esc(a.label)}</button>`).join("")}
           </div>
           <div class="filters">
+            ${!inProject && active.length ? `<label for="ask-project" class="sr-only">Save to project</label>
+              <select id="ask-project" class="select">
+                <option value="">No project</option>
+                ${active.map((p) => `<option value="${esc(p.id)}"${p.id === state.projectId ? " selected" : ""}>Project: ${esc(p.name)}</option>`).join("")}
+              </select>` : ""}
             <label for="published" class="sr-only">Published</label>
             <select id="published" class="select">
               ${PUBLISHED.map(([v, l]) => `<option value="${v}"${v === f.published ? " selected" : ""}>${l}</option>`).join("")}
@@ -514,7 +531,69 @@ function renderHome(scrollTo) {
           </div>
         </div>
         <p class="hint-on-blue" id="aud-hint" aria-live="polite">${esc(AUDIENCES[state.audience].hint)}</p>
-        ${topicChips()}
+        ${topicChips()}`;
+}
+
+function bindAskControls(rerender) {
+  const form = document.getElementById("ask-form");
+  const textarea = document.getElementById("question");
+
+  const grow = () => { textarea.style.height = "auto"; textarea.style.height = textarea.scrollHeight + "px"; };
+  grow();
+  textarea.addEventListener("input", () => { state.question = textarea.value; grow(); });
+  textarea.addEventListener("keydown", (e) => {
+    // Enter asks; Shift+Enter adds a new line
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+  form.addEventListener("submit", (e) => { e.preventDefault(); ask(); });
+
+  app.querySelectorAll("[data-audience]").forEach((button) =>
+    button.addEventListener("click", () => {
+      state.audience = button.dataset.audience;
+      app.querySelectorAll("[data-audience]").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
+      document.getElementById("aud-hint").textContent = AUDIENCES[state.audience].hint;
+    }));
+
+  document.getElementById("ask-project")?.addEventListener("change", (e) => { state.projectId = e.target.value; });
+  document.getElementById("topk").addEventListener("change", (e) => { state.topK = Number(e.target.value); });
+  document.getElementById("published").addEventListener("change", (e) => {
+    state.filters.published = e.target.value;
+    rerender();
+    if (e.target.value === "custom") document.getElementById("since")?.focus();
+  });
+  document.getElementById("since")?.addEventListener("change", (e) => { state.filters.since = e.target.value; });
+
+  app.querySelectorAll("[data-topic]").forEach((button) =>
+    button.addEventListener("click", () => {
+      const id = button.dataset.topic;
+      const chosen = new Set(state.filters.categories);
+      if (!id) chosen.clear();
+      else if (chosen.has(id)) chosen.delete(id);
+      else chosen.add(id);
+      state.filters.categories = [...chosen];
+      app.querySelectorAll("[data-topic]").forEach((b) => b.setAttribute("aria-pressed",
+        String(b.dataset.topic ? chosen.has(b.dataset.topic) : !chosen.size)));
+    }));
+}
+
+function renderHome(scrollTo) {
+  state.page = "home";
+  setNav("home");
+  topbarTitle("RESEARCH WORKSPACE");
+
+  const examples = (state.info && state.info.examples) || [];
+  const recent = state.briefs.slice(0, 5);
+
+  app.className = "";
+  app.innerHTML = `
+    <section class="hero" aria-labelledby="hero-h">
+      <div class="hero-inner">
+        <div class="hero-head">
+          <h1 id="hero-h">What Do You Want to Understand?</h1>
+          <p class="hero-sub">Ask a research question, search through recent papers, and receive a concise summary and business brief with sources.</p>
+        </div>
+
+        ${askControls(false)}
       </div>
     </section>
 
@@ -552,44 +631,7 @@ function renderHome(scrollTo) {
 }
 
 function bindHome() {
-  const form = document.getElementById("ask-form");
-  const textarea = document.getElementById("question");
-
-  const grow = () => { textarea.style.height = "auto"; textarea.style.height = textarea.scrollHeight + "px"; };
-  grow();
-  textarea.addEventListener("input", () => { state.question = textarea.value; grow(); });
-  textarea.addEventListener("keydown", (e) => {
-    // Enter asks; Shift+Enter adds a new line
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
-  });
-  form.addEventListener("submit", (e) => { e.preventDefault(); ask(); });
-
-  app.querySelectorAll("[data-audience]").forEach((button) =>
-    button.addEventListener("click", () => {
-      state.audience = button.dataset.audience;
-      app.querySelectorAll("[data-audience]").forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
-      document.getElementById("aud-hint").textContent = AUDIENCES[state.audience].hint;
-    }));
-
-  document.getElementById("topk").addEventListener("change", (e) => { state.topK = Number(e.target.value); });
-  document.getElementById("published").addEventListener("change", (e) => {
-    state.filters.published = e.target.value;
-    renderHome();
-    if (e.target.value === "custom") document.getElementById("since")?.focus();
-  });
-  document.getElementById("since")?.addEventListener("change", (e) => { state.filters.since = e.target.value; });
-
-  app.querySelectorAll("[data-topic]").forEach((button) =>
-    button.addEventListener("click", () => {
-      const id = button.dataset.topic;
-      const chosen = new Set(state.filters.categories);
-      if (!id) chosen.clear();
-      else if (chosen.has(id)) chosen.delete(id);
-      else chosen.add(id);
-      state.filters.categories = [...chosen];
-      app.querySelectorAll("[data-topic]").forEach((b) => b.setAttribute("aria-pressed",
-        String(b.dataset.topic ? chosen.has(b.dataset.topic) : !chosen.size)));
-    }));
+  bindAskControls(renderHome);
 
   app.querySelectorAll("[data-example]").forEach((button) =>
     button.addEventListener("click", () => {
@@ -611,11 +653,17 @@ function animateProgress() {
   return () => timers.forEach(clearTimeout);
 }
 
+// Redraw whichever page the question was asked from
+function rerenderAsk() {
+  if (state.page === "project" && state.project) renderProject();
+  else renderHome();
+}
+
 async function ask() {
   const question = state.question.trim();
   if (!question) {
     state.error = "Please type a question.";
-    renderHome();
+    rerenderAsk();
     document.getElementById("question").focus();
     return;
   }
@@ -623,33 +671,98 @@ async function ask() {
 
   if (state.filters.published === "custom" && !state.filters.since) {
     state.error = "Pick a start date, or choose a different Published option.";
-    renderHome();
+    rerenderAsk();
     return;
   }
 
+  const page = location.hash || "#/";
+  const projectId = state.page === "project" && state.project ? state.project.id : state.projectId;
+
   state.busy = true;
   state.error = "";
-  renderHome();
+  rerenderAsk();
   const stop = animateProgress();
 
   try {
     const record = await api("/api/ask", {
       question, audience: state.audience, top_k: state.topK, ...filterPayload(),
+      project_id: projectId || null,
     });
     stop();
     state.busy = false;
     state.question = "";
     refreshBriefs();
+    if (projectId) refreshProjects();
     location.hash = `#/brief/${record.id}`;
   } catch (error) {
     stop();
     state.busy = false;
     state.error = error.message;
-    if (!location.hash.startsWith("#/brief/")) renderHome();
+    if ((location.hash || "#/") === page) rerenderAsk();
   }
 }
 
 // ---------- Library and Review Queue ----------
+
+const LIB_DATES = [["", "Any date"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["90", "Last 90 days"]];
+const EVIDENCE_LEVELS = ["High", "Medium", "Low"];
+
+function libraryMatches(briefs) {
+  const f = state.lib;
+  const words = f.q.trim().toLowerCase();
+  const filed = projectMap();
+  const cutoff = f.date ? Date.now() - Number(f.date) * 86400000 : 0;
+
+  return briefs.filter((b) =>
+    (!words || b.query.toLowerCase().includes(words)) &&
+    (!f.audience || b.audience === f.audience) &&
+    (!f.status || (b.status || "draft") === f.status) &&
+    (!f.evidence || (f.evidence === "none" ? !b.evidence : b.evidence === f.evidence)) &&
+    (!cutoff || (b.created_at && Date.parse(b.created_at) >= cutoff)) &&
+    (!f.project || (f.project === "none"
+      ? !filed[b.id]
+      : (filed[b.id] || []).some((p) => p.id === f.project))));
+}
+
+function libSelect(key, label, options) {
+  return `<label class="lib-field"><span class="sr-only">${esc(label)}</span>
+    <select class="select select--light" data-lib="${key}">
+      ${options.map(([v, l]) => `<option value="${esc(v)}"${state.lib[key] === v ? " selected" : ""}>${esc(l)}</option>`).join("")}
+    </select></label>`;
+}
+
+function libraryFilters() {
+  return `<div class="lib-filters" role="search" aria-label="Filter briefs">
+    <label class="lib-field lib-field--wide"><span class="sr-only">Search questions</span>
+      <input type="search" class="text-input" id="lib-q" placeholder="Search questions" value="${esc(state.lib.q)}"></label>
+    ${libSelect("audience", "Audience", [["", "All audiences"], ...Object.entries(AUDIENCES).map(([id, a]) => [id, a.label])])}
+    ${libSelect("status", "Review status", [["", "Any status"], ...Object.entries(STATUS).map(([id, st]) => [id, st.pill])])}
+    ${libSelect("evidence", "Evidence", [["", "Any evidence"], ...EVIDENCE_LEVELS.map((l) => [l, `${l} evidence`]), ["none", "Evidence not stated"]])}
+    ${libSelect("date", "Created", LIB_DATES)}
+    ${state.projects.length ? libSelect("project", "Project", [["", "Any project"], ["none", "Not in a project"],
+      ...state.projects.map((p) => [p.id, p.name])]) : ""}
+    <button type="button" class="btn btn--link" id="lib-clear">Clear filters</button>
+  </div>
+  <p class="lib-count" id="lib-count" aria-live="polite"></p>`;
+}
+
+function drawLibrary() {
+  const list = document.getElementById("list");
+  if (!list) return;
+  const shown = libraryMatches(state.briefs);
+  const filtered = Object.values(state.lib).some(Boolean);
+
+  document.getElementById("lib-count").textContent = filtered
+    ? `Showing ${shown.length} of ${state.briefs.length} briefs`
+    : `${state.briefs.length} brief${state.briefs.length === 1 ? "" : "s"}`;
+  document.getElementById("lib-clear").hidden = !filtered;
+
+  list.innerHTML = shown.length
+    ? listRows(shown, { projects: true })
+    : `<p class="empty">${state.briefs.length
+      ? "No briefs match these filters."
+      : "No briefs yet. Ask a question on Home to create the first one."}</p>`;
+}
 
 async function renderList(kind) {
   const review = kind === "review";
@@ -662,17 +775,297 @@ async function renderList(kind) {
     <p class="intro">${review
       ? "Briefs that are waiting for a KPMG reviewer, or were sent back with changes. Briefs can’t be used with clients until they’re approved."
       : "Every saved brief, newest first. Opening one never calls the model again."}</p>
+    ${review ? "" : '<div id="lib-filters"></div>'}
     <div class="list-panel" id="list"><p class="empty">Loading…</p></div>
   </div>`;
 
-  await refreshBriefs();
+  await Promise.all([refreshBriefs(), refreshProjects()]);
   const list = document.getElementById("list");
   if (!list) return;
 
-  const briefs = review ? state.briefs.filter((b) => b.status !== "approved") : state.briefs;
-  list.innerHTML = briefs.length
-    ? listRows(briefs)
-    : `<p class="empty">${review ? "Nothing waiting for review." : "No briefs yet. Ask a question on Home to create the first one."}</p>`;
+  if (review) {
+    const waiting = state.briefs.filter((b) => b.status !== "approved");
+    list.innerHTML = waiting.length
+      ? listRows(waiting, { projects: true })
+      : '<p class="empty">Nothing waiting for review.</p>';
+    return;
+  }
+
+  if (state.lib.project && !state.projects.some((p) => p.id === state.lib.project) && state.lib.project !== "none") {
+    state.lib.project = "";
+  }
+  document.getElementById("lib-filters").innerHTML = libraryFilters();
+  document.getElementById("lib-q").addEventListener("input", (e) => { state.lib.q = e.target.value; drawLibrary(); });
+  app.querySelectorAll("[data-lib]").forEach((select) =>
+    select.addEventListener("change", () => { state.lib[select.dataset.lib] = select.value; drawLibrary(); }));
+  document.getElementById("lib-clear").addEventListener("click", () => {
+    Object.keys(state.lib).forEach((k) => { state.lib[k] = ""; });
+    renderList("library");
+  });
+  drawLibrary();
+}
+
+// ---------- Projects ----------
+
+const PROJECT_FIELDS = [
+  ["name", "Project name", "input", 120, "e.g., Northbank chatbot rollout"],
+  ["client", "Client", "input", 120, "e.g., Northbank"],
+  ["industry", "Industry", "input", 120, "e.g., Retail banking"],
+  ["objective", "Engagement goal", "textarea", 1000, "What the client needs to decide or deliver"],
+  ["notes", "Notes", "textarea", 4000, "Scope, constraints, regulators, stakeholders"],
+];
+
+async function refreshProjects() {
+  try {
+    state.projects = await api("/api/projects");
+  } catch {
+    /* keep the last list */
+  }
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+function projectRows(projects) {
+  return projects.map((p) => {
+    const meta = [p.client, p.industry, plural(p.brief_count || 0, "brief"),
+      p.updated_at ? `Updated ${formatDate(p.updated_at)}` : ""].filter(Boolean);
+    return `<a class="list-row" href="#/project/${esc(p.id)}">
+      <span><span class="title">${esc(p.name)}</span>
+        <span class="meta">${meta.map((m) => `<span>${esc(m)}</span>`).join("")}</span></span>
+      ${p.status === "archived" ? '<span class="status status--changes">Archived</span>' : ""}
+    </a>`;
+  }).join("");
+}
+
+function drawProjects() {
+  const list = document.getElementById("list");
+  if (!list) return;
+  const shown = state.projects.filter((p) => state.showArchived || p.status !== "archived");
+  const archived = state.projects.length - state.projects.filter((p) => p.status !== "archived").length;
+  document.getElementById("archived-toggle").hidden = !archived;
+
+  list.innerHTML = shown.length
+    ? projectRows(shown)
+    : `<p class="empty">${state.projects.length
+      ? "All projects are archived."
+      : 'No projects yet. <a href="#/projects/new">Create one</a> for the client you’re working with.'}</p>`;
+}
+
+async function renderProjects() {
+  setNav("projects");
+  topbarTitle("PROJECTS");
+
+  app.className = "";
+  app.innerHTML = `<div class="content content--list">
+    <div class="page-head">
+      <h1 class="page-title">Projects</h1>
+      <a class="btn btn--primary" href="#/projects/new">New project</a>
+    </div>
+    <p class="intro">One project for each client engagement. Questions asked inside a project get briefs written with that client in mind, and any saved brief can be filed in as many projects as you need.</p>
+    <div class="list-panel" id="list"><p class="empty">Loading…</p></div>
+    <label class="toggle" id="archived-toggle" hidden>
+      <input type="checkbox" id="show-archived"${state.showArchived ? " checked" : ""}> Show archived projects
+    </label>
+  </div>`;
+
+  document.getElementById("show-archived").addEventListener("change", (e) => {
+    state.showArchived = e.target.checked;
+    drawProjects();
+  });
+
+  await refreshProjects();
+  drawProjects();
+}
+
+async function renderProjectForm(id) {
+  setNav("projects");
+  topbarTitle("PROJECTS");
+  app.className = "";
+
+  let project = { name: "", client: "", industry: "", objective: "", notes: "", status: "active" };
+  if (id) {
+    app.innerHTML = '<p class="loading">Loading project…</p>';
+    try {
+      project = await api(`/api/projects/${encodeURIComponent(id)}`);
+    } catch (error) {
+      app.innerHTML = `<div class="content content--list"><p class="error" role="alert">${esc(error.message)}</p>
+        <p><a href="#/projects">Back to Projects</a></p></div>`;
+      return;
+    }
+  }
+
+  const archived = project.status === "archived";
+  app.innerHTML = `<div class="content content--list content--narrow">
+    <a class="crumb" href="${id ? `#/project/${esc(id)}` : "#/projects"}">${id ? esc(project.name) : "All projects"}</a>
+    <h1 class="page-title">${id ? "Edit project" : "New project"}</h1>
+    <p class="intro">Client, industry, goal and notes are added to every brief written in this project, so keep them short and factual. They never change the research summary.</p>
+    <form class="card project-form" id="project-form" novalidate>
+      ${PROJECT_FIELDS.map(([key, label, kind, max, hint]) => `<div class="form-field">
+        <label for="pf-${key}">${esc(label)}${key === "name" ? "" : ' <span class="optional">optional</span>'}</label>
+        ${kind === "input"
+          ? `<input id="pf-${key}" class="text-input" type="text" maxlength="${max}" placeholder="${esc(hint)}" value="${esc(project[key])}"${key === "name" ? " required" : ""}>`
+          : `<textarea id="pf-${key}" class="field" rows="3" maxlength="${max}" placeholder="${esc(hint)}">${esc(project[key])}</textarea>`}
+      </div>`).join("")}
+      <p class="error" id="pf-error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="submit" class="btn btn--primary">${id ? "Save changes" : "Create project"}</button>
+        <a class="btn" href="${id ? `#/project/${esc(id)}` : "#/projects"}">Cancel</a>
+        ${id ? `<button type="button" class="btn btn--push" id="pf-archive">${archived ? "Restore project" : "Archive project"}</button>` : ""}
+      </div>
+    </form>
+  </div>`;
+
+  const showError = (message) => {
+    const el = document.getElementById("pf-error");
+    el.textContent = message;
+    el.hidden = false;
+  };
+
+  document.getElementById("project-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(PROJECT_FIELDS.map(([key]) => [key, document.getElementById(`pf-${key}`).value]));
+    if (!body.name.trim()) {
+      showError("Please give the project a name.");
+      document.getElementById("pf-name").focus();
+      return;
+    }
+    try {
+      const saved = id
+        ? await api(`/api/projects/${encodeURIComponent(id)}`, body, "PUT")
+        : await api("/api/projects", body);
+      await refreshProjects();
+      toast(id ? "Project saved" : "Project created");
+      location.hash = `#/project/${saved.id}`;
+    } catch (error) {
+      showError(error.message);
+    }
+  });
+
+  document.getElementById("pf-name").addEventListener("input", () => { document.getElementById("pf-error").hidden = true; });
+
+  document.getElementById("pf-archive")?.addEventListener("click", async () => {
+    try {
+      await api(`/api/projects/${encodeURIComponent(id)}`, { status: archived ? "active" : "archived" }, "PUT");
+      await refreshProjects();
+      toast(archived ? "Project restored" : "Project archived");
+      location.hash = archived ? `#/project/${id}` : "#/projects";
+    } catch (error) {
+      showError(error.message);
+    }
+  });
+
+  document.getElementById("pf-name").focus();
+}
+
+function detailRow(label, value) {
+  return `<div><dt>${esc(label)}</dt><dd>${value ? esc(value) : '<span class="unset">Not set</span>'}</dd></div>`;
+}
+
+function renderProject() {
+  const p = state.project;
+  state.page = "project";
+  setNav("projects");
+  topbarTitle("PROJECTS");
+
+  const filed = new Set(p.brief_ids || []);
+  const addable = state.briefs.filter((b) => !filed.has(b.id));
+  const who = [p.client, p.industry].filter(Boolean).join(", ");
+
+  app.className = "";
+  app.innerHTML = `
+    <section class="hero hero--project" aria-labelledby="project-h">
+      <div class="hero-inner">
+        <div class="project-head">
+          <a class="crumb crumb--on-blue" href="#/projects">All projects</a>
+          <h1 id="project-h">${esc(p.name)}</h1>
+          ${who ? `<p class="hero-sub">${esc(who)}</p>` : ""}
+          ${p.status === "archived" ? '<p class="hint-on-blue">This project is archived. You can still read its briefs; restore it from Edit details to add more.</p>' : ""}
+        </div>
+        ${p.status === "archived" ? "" : askControls(true)}
+      </div>
+    </section>
+
+    <div class="content">
+      <div class="project-columns">
+        <section class="section" aria-labelledby="pbriefs-h">
+          <div class="section-head">
+            <h2 class="section-title" id="pbriefs-h">Briefs in this project</h2>
+            <span class="count-text">${plural(p.briefs.length, "brief")}</span>
+          </div>
+          <div class="list-panel">
+            ${p.briefs.length ? listRows(p.briefs, { removable: true })
+              : '<p class="empty">No briefs yet. Ask a question above, or add a brief you’ve already saved.</p>'}
+          </div>
+          ${addable.length && p.status !== "archived" ? `<form class="add-brief" id="add-brief">
+            <label for="add-brief-id">Add a saved brief</label>
+            <div class="row">
+              <select id="add-brief-id" class="select select--light">
+                ${addable.map((b) => `<option value="${esc(b.id)}">${esc(b.query.length > 90 ? b.query.slice(0, 89) + "…" : b.query)}</option>`).join("")}
+              </select>
+              <button type="submit" class="btn">Add to project</button>
+            </div>
+          </form>` : ""}
+        </section>
+
+        <aside class="card project-details" aria-labelledby="details-h">
+          <h2 id="details-h">Client details</h2>
+          <dl>
+            ${detailRow("Client", p.client)}
+            ${detailRow("Industry", p.industry)}
+            ${detailRow("Engagement goal", p.objective)}
+            ${detailRow("Notes", p.notes)}
+          </dl>
+          <p class="sub">Briefs asked here use these details to tailor Why It Matters and What To Do. The research summary is never changed.</p>
+          <a class="btn" href="#/project/${esc(p.id)}/edit">Edit details</a>
+        </aside>
+      </div>
+    </div>`;
+
+  if (p.status !== "archived") bindAskControls(renderProject);
+
+  document.getElementById("add-brief")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const briefId = document.getElementById("add-brief-id").value;
+    try {
+      state.project = await api(`/api/projects/${p.id}/briefs`, { brief_id: briefId });
+      refreshProjects();
+      toast("Added to project");
+    } catch (error) {
+      toast(error.message);
+    }
+    renderProject();
+  });
+
+  app.querySelectorAll("[data-unlink]").forEach((button) =>
+    button.addEventListener("click", async () => {
+      try {
+        state.project = await api(`/api/projects/${p.id}/briefs/${button.dataset.unlink}`, undefined, "DELETE");
+        refreshProjects();
+        toast("Removed from project. The brief is still in the Library.");
+      } catch (error) {
+        toast(error.message);
+      }
+      renderProject();
+    }));
+}
+
+async function openProject(id) {
+  setNav("projects");
+  topbarTitle("PROJECTS");
+  app.className = "";
+  app.innerHTML = '<p class="loading">Loading project…</p>';
+  try {
+    const project = await api(`/api/projects/${encodeURIComponent(id)}`);
+    state.project = project;
+    // Home's project picker follows the project you last opened
+    if (project.status !== "archived") state.projectId = project.id;
+    renderProject();
+  } catch (error) {
+    app.innerHTML = `<div class="content content--list"><p class="error" role="alert">${esc(error.message)}</p>
+      <p><a href="#/projects">Back to Projects</a></p></div>`;
+  }
 }
 
 // ---------- Brief page ----------
@@ -862,6 +1255,50 @@ function reviewPanel(record, entry) {
   </div>`;
 }
 
+// The client a brief was tailored to, from the saved client text
+function clientName(record) {
+  if (!record.client_context) return "";
+  const match = record.client_context.match(/^Client: (.+)$/m);
+  if (match) return match[1];
+  const project = (record.projects || []).find((p) => p.id === record.asked_in);
+  return project ? project.name : "this project's client";
+}
+
+function projectLinks(record) {
+  const filed = record.projects || [];
+  const ids = new Set(filed.map((p) => p.id));
+  const addable = state.projects.filter((p) => p.status !== "archived" && !ids.has(p.id));
+
+  return `<div class="project-links no-print">
+    <span class="label">Projects</span>
+    ${filed.length ? filed.map((p) => `<span class="tag tag--link">
+        <a href="#/project/${esc(p.id)}">${esc(p.name)}</a>
+        <button type="button" class="tag-x" data-unproject="${esc(p.id)}" aria-label="Remove from ${esc(p.name)}">×</button>
+      </span>`).join("") : '<span class="none">Not in a project</span>'}
+    ${addable.length ? `<label for="add-to-project" class="sr-only">Add to project</label>
+      <select id="add-to-project" class="select select--light select--small">
+        <option value="">Add to project…</option>
+        ${addable.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}
+      </select>` : ""}
+  </div>`;
+}
+
+async function changeProjects(request, done) {
+  const id = state.record.id;
+  try {
+    await request();
+    const record = await api(`/api/briefs/${id}`);
+    await refreshProjects();
+    if (state.record && state.record.id === id) {
+      state.record = record;
+      renderBrief();
+    }
+    toast(done);
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
 function renderBrief() {
   const record = state.record;
   const entry = currentBrief();
@@ -874,6 +1311,7 @@ function renderBrief() {
   const evidence = entry && entry.checks.evidence.level;
   const lede = entry ? bottomLine(entry.brief) : "";
   const filters = filtersText(record.filters);
+  const tailored = clientName(record);
 
   const panels = {
     brief: () => briefPanel(record, entry, briefCited),
@@ -893,11 +1331,13 @@ function renderBrief() {
       ${lede ? `<p class="lede">${esc(lede)}</p>` : ""}
       <div class="meta">
         <span>Written for: <strong>${esc(audience.label)}</strong></span>
+        ${tailored ? `<span>Tailored to: <strong>${esc(tailored)}</strong></span>` : ""}
         <span>${record.sources.length} papers retrieved, ${briefCited.size} cited in the brief</span>
         ${filters ? `<span>Papers ${esc(filters)}</span>` : ""}
         <span>Model: ${esc(record.model)}</span>
         <span>${esc(formatDate(record.created_at))}</span>
       </div>
+      ${projectLinks(record)}
     </div>
 
     ${state.error ? `<p class="error" role="alert">${esc(state.error)}</p>` : ""}
@@ -943,6 +1383,17 @@ function bindBrief() {
   on("[data-decision]", (e) => {
     const decision = e.currentTarget.dataset.decision;
     setStatus(decision, decision === "changes" ? document.getElementById("note").value : "");
+  });
+  on("[data-unproject]", (e) => {
+    const projectId = e.currentTarget.dataset.unproject;
+    changeProjects(() => api(`/api/projects/${projectId}/briefs/${state.record.id}`, undefined, "DELETE"),
+      "Removed from project");
+  });
+  document.getElementById("add-to-project")?.addEventListener("change", (e) => {
+    const projectId = e.target.value;
+    if (!projectId) return;
+    changeProjects(() => api(`/api/projects/${projectId}/briefs`, { brief_id: state.record.id }),
+      "Added to project");
   });
   on("#print", () => window.print());
   on("#copy-link", () => copyText(location.href, "Link copied"));
@@ -1062,6 +1513,11 @@ async function route() {
 
   state.error = state.busy ? state.error : "";
 
+  const project = hash.match(/^#\/project\/([^/]+)(?:\/(edit))?$/);
+  if (hash === "#/projects") return renderProjects();
+  if (hash === "#/projects/new") return renderProjectForm(null);
+  if (project) return project[2] ? renderProjectForm(project[1]) : openProject(project[1]);
+
   if (hash === "#/library" || hash === "#/saved") return renderList("library");
   if (hash === "#/review") return renderList("review");
 
@@ -1089,7 +1545,7 @@ async function init() {
     state.info = { corpus: {} };
     document.getElementById("model-text").textContent = "Server not reachable";
   }
-  await refreshBriefs();
+  await Promise.all([refreshBriefs(), refreshProjects()]);
   route();
 }
 
