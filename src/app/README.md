@@ -8,13 +8,15 @@ The look follows the team's KPMG-1J Figma file (Home Page and Research Page fram
 
 ```bash
 pip install -r requirements.txt
-export GROQ_API_KEY=...                 # or NVIDIA_API_KEY / GEMINI_API_KEY with --provider
-python -m src.app                       # then open http://localhost:8000
+export NVIDIA_API_KEY=...               # free key from build.nvidia.com
+python -m src.app --provider nvidia     # then open http://localhost:8000
 ```
+
+The team uses NVIDIA. On a Mac you can copy the key and run `export NVIDIA_API_KEY="$(pbpaste)"` so it never appears on screen. Groq and Gemini also work: set `GROQ_API_KEY` or `GEMINI_API_KEY` and pass `--provider groq` or `--provider gemini`.
 
 It needs the papers in `data/papers_clean.parquet` and the LanceDB index built from them in `data/index` (see `src/pipeline/README.md`, Setup). Startup takes a few seconds to load the embedding model. Paper title/abstract vectors are read from the index; if it was built before they were stored, they're embedded at startup instead, which takes longer.
 
-Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`, `--projects-dir`.
+Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`, `--projects-dir`, `--adaptations-dir`, `--pilot-plans-dir`, `--comments-dir`.
 
 ## What each button costs
 
@@ -59,10 +61,28 @@ Copy for email and Copy for Slack turn citations into `[1]`, `[2]` numbers and a
 | File | What it does |
 |---|---|
 | `server.py` | FastAPI app (`create_app`) and the `python -m src.app` entry point |
-| `store.py` | Saves and lists briefs and projects as JSON files |
+| `store.py` | Saves and lists briefs, projects, industry adaptations, pilot plans and comments as JSON files |
 | `checks.py` | Citation, template and evidence checks (no LLM) |
 | `static/` | The page: `index.html`, `app.css`, `app.js` (no build step) |
 
 API for projects: `GET/POST /api/projects`, `GET/PUT /api/projects/{id}`, `POST /api/projects/{id}/briefs` (`{"brief_id"}`), `DELETE /api/projects/{id}/briefs/{brief_id}`. `POST /api/ask` takes an optional `project_id`, and every brief response includes `projects`.
 
-Tests: `tests/test_app.py` (uses a fake retriever and LLM, so no API key is needed).
+## Saved industry adaptations, pilot plans and comments
+
+Each is saved as one JSON file (git-ignored), like briefs, and saving, opening, editing or deleting one costs no LLM calls. Each keeps the id of what it came from: brief → adaptations → pilot plans, and comments can sit on any of the three.
+
+| Item | Folder | Fields |
+|---|---|---|
+| Industry adaptation | `data/ui_adaptations/` | `id`, `brief_id`, `query`, `industry`, `use_cases`, `constraints`, `considerations` (lists of text or small objects), `created_by`, `created_at`, `updated_at` |
+| Pilot plan | `data/ui_pilot_plans/` | `id`, `adaptation_id`, `brief_id`, `industry`, `title`, `use_case`, `answers` (question → answer), `checklist` (`[{"text", "done"}]`), `created_by`, `created_at`, `updated_at` |
+| Comment | `data/ui_comments/` | `id`, `target_type` (`brief`, `adaptation` or `pilot_plan`), `target_id`, `author`, `text`, `created_at` |
+
+API:
+
+- Adaptations: `POST /api/briefs/{brief_id}/adaptations`, `GET /api/briefs/{brief_id}/adaptations`, `GET /api/adaptations?brief_id=&industry=`, `GET/PUT/DELETE /api/adaptations/{id}`. `GET` one includes its `pilot_plans` and `comments`. Deleting one also deletes its pilot plans and their comments.
+- Pilot plans: `POST /api/adaptations/{id}/pilot-plans`, `GET /api/adaptations/{id}/pilot-plans`, `GET /api/pilot-plans?adaptation_id=&brief_id=`, `GET/PUT/DELETE /api/pilot-plans/{id}`. `GET` one includes its `comments`.
+- Comments: `POST /api/comments` (`{"target_type", "target_id", "author", "text"}`), `GET /api/comments?target_type=&target_id=` (oldest first), `DELETE /api/comments/{id}`.
+
+`PUT` keeps any field you leave out, so ticking one checklist box can send just `{"checklist": [...]}`. Folders can be changed with `--adaptations-dir`, `--pilot-plans-dir` and `--comments-dir`.
+
+Tests: `tests/test_storage.py` (no API key needed) and `tests/test_app.py` (uses a fake retriever and LLM, so no API key is needed).
