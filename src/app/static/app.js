@@ -78,6 +78,7 @@ const state = {
   tab: "brief",
   followup: "",
   followupBusy: false,
+  comments: [],
   reveal: false,      // fade in the Bottom Line once, when a brief first opens
   page: "home",       // "home" or "project": where an ask redraws while it runs
   projects: [],       // project list (with brief_ids)
@@ -1351,6 +1352,32 @@ async function changeProjects(request, done) {
   }
 }
 
+function commentsSection(briefId) {
+  const items = state.comments;
+  return `<section class="card followups no-print" id="comments-section" aria-labelledby="comments-h">
+    <h2 id="comments-h">Comments</h2>
+    <div id="comments-list">
+      ${items.length ? items.map((c) => `
+        <div class="followup" data-comment-id="${esc(c.id)}">
+          <p class="fu-q">${esc(c.author)} &middot; <span class="sub">${formatDate(c.created_at)}</span></p>
+          <div class="fu-a"><p>${esc(c.text)}</p></div>
+          <button type="button" class="btn btn--link" data-delete-comment="${esc(c.id)}"
+            aria-label="Delete comment by ${esc(c.author)}">Delete</button>
+        </div>`).join("") : '<p class="intro">No comments yet.</p>'}
+    </div>
+    <form class="followup-form" id="comment-form">
+      <div class="row">
+        <label for="comment-author" class="sr-only">Your name</label>
+        <input id="comment-author" class="text-input" type="text" placeholder="Your name" maxlength="120">
+        <label for="comment-text" class="sr-only">Comment</label>
+        <input id="comment-text" class="text-input" type="text" placeholder="Add a comment…" maxlength="4000">
+        <button type="submit" class="btn btn--primary">Post</button>
+      </div>
+      <p class="error" id="comment-error" role="alert" hidden></p>
+    </form>
+  </section>`;
+}
+
 function renderBrief() {
   const record = state.record;
   const entry = currentBrief();
@@ -1402,7 +1429,8 @@ function renderBrief() {
 
     <div class="panel" id="panel" role="tabpanel" aria-labelledby="tab-${state.tab}">
       ${panels[state.tab]()}
-    </div>`;
+    </div>
+    ${commentsSection(record.id)}`;
 
   bindBrief();
   state.reveal = false;
@@ -1412,6 +1440,52 @@ function selectTab(tab, focus) {
   state.tab = tab;
   renderBrief();
   if (focus) document.getElementById(`tab-${tab}`)?.focus();
+}
+
+function bindComments(briefId) {
+  const form = document.getElementById("comment-form");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const author = document.getElementById("comment-author").value.trim();
+    const text = document.getElementById("comment-text").value.trim();
+    const errorEl = document.getElementById("comment-error");
+
+    if (!author || !text) {
+      errorEl.textContent = "Please fill in your name and comment.";
+      errorEl.hidden = false;
+      return;
+    }
+    errorEl.hidden = true;
+
+    try {
+      const comment = await api("/api/comments", {
+        target_type: "brief", target_id: briefId, author, text,
+      });
+      state.comments.push(comment);
+      document.getElementById("comment-author").value = "";
+      document.getElementById("comment-text").value = "";
+      document.getElementById("comments-list").outerHTML = commentsSection(briefId)
+        .match(/<div id="comments-list">[\s\S]*?<\/div>/)[0];
+      renderBrief();
+    } catch (error) {
+      errorEl.textContent = error.message;
+      errorEl.hidden = false;
+    }
+  });
+
+  document.querySelectorAll("[data-delete-comment]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const commentId = btn.dataset.deleteComment;
+      try {
+        await api(`/api/comments/${commentId}`, undefined, "DELETE");
+        state.comments = state.comments.filter((c) => c.id !== commentId);
+        renderBrief();
+      } catch (error) {
+        toast(error.message);
+      }
+    }));
 }
 
 function bindBrief() {
@@ -1459,6 +1533,8 @@ function bindBrief() {
     state.error = "";
     location.hash = "#/";
   });
+
+  bindComments(state.record.id);
 
   // Citation links scroll to the source card; papers not shown here open the Sources tab
   on("[data-src]", (e) => {
@@ -1546,9 +1622,14 @@ async function openBrief(id, tab) {
       state.reveal = true;
     }
     if (TABS.some(([t]) => t === tab)) state.tab = tab;
-    state.record = record;
+        state.record = record;
     state.view = record.audience;
     state.error = "";
+    try {
+      state.comments = await api(`/api/comments?target_type=brief&target_id=${encodeURIComponent(id)}`);
+    } catch {
+      state.comments = [];
+    }
     renderBrief();
   } catch (error) {
     app.innerHTML = `<p class="error" role="alert">${esc(error.message)}</p><p><a href="#/">Back to Home</a></p>`;
