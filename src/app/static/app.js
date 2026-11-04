@@ -1173,6 +1173,57 @@ function followupSection(record, entry) {
   </section>`;
 }
 
+function industryApplicationSection() {
+  const industries = [
+    "Healthcare", "Finance", "Construction & Real Estate", "Government & Public Services",
+  ];
+  return `<section class="card followups no-print" id="industry-application" aria-labelledby="industry-h">
+    <h2 id="industry-h">Suggested industry applications</h2>
+    <div class="chip-row" role="group" aria-label="Industry">
+      ${industries.map((industry) =>
+        `<button type="button" class="btn" data-industry="${esc(industry)}" aria-pressed="false">${esc(industry)}</button>`
+      ).join("")}
+    </div>
+    <p class="industry-status" role="status">Choose an industry to generate a suggested application.</p>
+    <div class="doc industry-brief"></div>
+  </section>`;
+}
+
+function bindIndustryApplication(briefId) {
+  const panel = document.getElementById("industry-application");
+  if (!panel) return;
+
+  const buttons = panel.querySelectorAll("[data-industry]");
+  const status = panel.querySelector(".industry-status");
+  const brief = panel.querySelector(".industry-brief");
+  const requests = new Map();
+  let selectedIndustry;
+
+  buttons.forEach((button) => button.addEventListener("click", async () => {
+    const industry = button.dataset.industry;
+    selectedIndustry = industry;
+    buttons.forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+    brief.replaceChildren();
+    status.textContent = `Generating a suggested application for ${industry}…`;
+
+    if (!requests.has(industry)) {
+      requests.set(industry, api(`/api/briefs/${briefId}/industry-application`, { industry }));
+    }
+
+    try {
+      const { application } = await requests.get(industry);
+      if (industry !== selectedIndustry) return;
+      status.textContent = "";
+      brief.innerHTML = renderDoc(application, []);
+    } catch (error) {
+      requests.delete(industry);
+      if (industry === selectedIndustry) {
+        status.textContent = `${error.message} Select ${industry} to retry.`;
+      }
+    }
+  }));
+}
+
 function briefPanel(record, entry, cited) {
   if (!entry) {
     return `<article class="card"><div class="doc"><section><p>${esc(record.summary)}</p></section></div></article>`;
@@ -1194,6 +1245,7 @@ function briefPanel(record, entry, cited) {
               : `<button type="button" class="btn" data-rewrite="${a}">Rewrite for ${esc(AUDIENCES[a].label)}</button>`).join("")}
           </div>
         </article>
+        ${industryApplicationSection()}
         ${followupSection(record, entry)}
       </div>
       ${citedAside(record, cited, "Cited in this brief")}
@@ -1363,6 +1415,7 @@ function selectTab(tab, focus) {
 }
 
 function bindBrief() {
+  bindIndustryApplication(state.record.id);
   const on = (selector, handler) => app.querySelectorAll(selector).forEach((el) => el.addEventListener("click", handler));
 
   const tabIds = TABS.map(([id]) => id);

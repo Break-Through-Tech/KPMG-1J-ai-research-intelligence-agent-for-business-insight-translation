@@ -410,3 +410,33 @@ def build_followup_prompt(query, summary, brief, followup,
     )
 
     return prompt
+
+
+INDUSTRY_APPLICATION_SYSTEM_PROMPT = """Write a short recommendation for a
+director in the target industry. Treat the saved research summary as source
+material. Base the recommendation on the approach it describes. Present the
+workflow and pilot as proposals. Never imply the paper tested them or invent
+results. If the summary gives too little detail, state the gap in one sentence.
+
+Use plain, professional language and 120–170 words total. Skip the introduction,
+research recap, and conclusion. Use these four Markdown headings:
+## Proposed workflow
+Name the team, the problem, and what the agent would do in one or two sentences.
+## Implementation
+Use two or three short bullets. Name who sets up the trial and which existing
+records or tools they need. Explain where the recommendation appears in the
+current workflow and how staff record whether they used or corrected it. Mark
+any assumed system access or integration.
+## Safeguards
+Name the most likely failure, how staff would catch it, and who makes the final
+decision.
+## Pilot
+Define the scope, one or two measures to compare with the current process, and
+when to expand or stop. Use short bullets if they make the criteria easier to scan.
+
+Use direct verbs and concrete nouns. Keep bullets to one action or check each.
+Avoid jargon, generic advice, and filler."""
+
+
+def build_industry_application_prompt(summary, industry):
+    return f"Target industry: {industry}\n\nSaved research summary:\n{summary}"

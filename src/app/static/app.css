@@ -389,6 +389,12 @@ button, input, select, textarea { font: inherit; }
 .meter-labels { font-size: 13px; color: var(--muted); }
 .meter-labels .on { font-weight: 700; color: var(--kpmg); }
 
+#industry-application .btn[aria-pressed="true"] {
+  background: var(--kpmg);
+  color: var(--white);
+}
+.industry-status { margin-bottom: 0; }
+
 .actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line-soft); }
 
 .btn {

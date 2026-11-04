@@ -23,6 +23,7 @@ import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -30,7 +31,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.pipeline.pipeline import answer_followup, answer_query, translate_summary
-from src.translation.prompts import AUDIENCES, DEFAULT_AUDIENCE, format_client_context
+from src.translation.prompts import (
+    AUDIENCES,
+    DEFAULT_AUDIENCE,
+    INDUSTRY_APPLICATION_SYSTEM_PROMPT,
+    build_industry_application_prompt,
+    format_client_context,
+)
 
 from .checks import run_checks
 from .store import AdaptationStore, BriefStore, CommentStore, PilotPlanStore, ProjectStore
@@ -70,6 +77,15 @@ class AskRequest(BaseModel):
     categories: list[str] = []
     # ask inside a project: the brief is tailored to its client and saved there
     project_id: str | None = None
+
+
+class IndustryApplicationRequest(BaseModel):
+    industry: Literal[
+        "Healthcare",
+        "Finance",
+        "Construction & Real Estate",
+        "Government & Public Services",
+    ]
 
 
 class ProjectRequest(BaseModel):
@@ -364,6 +380,16 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
 
         followups.append({**answer, "audience": record["audience"], "created_at": now()})
         return with_projects(store.save(record))
+
+    @app.post("/api/briefs/{brief_id}/industry-application")
+    def industry_application(brief_id: str, request: IndustryApplicationRequest):
+        record = load(brief_id)
+        if not record["sources"] or not record["briefs"]:
+            raise HTTPException(400, "This brief has no research summary to adapt.")
+
+        prompt = build_industry_application_prompt(record["summary"], request.industry)
+        application = run_llm(lambda: llm.generate(INDUSTRY_APPLICATION_SYSTEM_PROMPT, prompt))
+        return {"application": application}
 
     # ---------- projects ----------
 

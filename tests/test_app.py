@@ -404,3 +404,48 @@ def test_project_skips_missing_briefs(project_setup, tmp_path):
     project["brief_ids"] = ["20260101-000000-abcdef"]
     store.save(project)
     assert client.get(f"/api/projects/{project['id']}").json()["briefs"] == []
+
+
+def test_industry_applications_reuse_the_same_saved_research(tmp_path):
+    summary = (
+        "Key Findings:\nAI agents coordinated construction tasks in a simulation. "
+        "[2609.38107v1]"
+    )
+    suggestions = {
+        "Healthcare": "Agents could coordinate referrals for staff review.",
+        "Finance": "Agents could route invoice exceptions for staff review.",
+        "Construction & Real Estate": "Agents could flag subcontractor scheduling conflicts.",
+        "Government & Public Services": "Agents could route service requests to staff.",
+    }
+
+    class IndustryLLM(CountingLLM):
+        def generate(self, system_prompt, user_prompt):
+            for industry, suggestion in suggestions.items():
+                if user_prompt.startswith(f"Target industry: {industry}\n"):
+                    assert summary in user_prompt
+                    for heading in (
+                        "Proposed workflow", "Implementation", "Safeguards", "Pilot",
+                    ):
+                        assert f"## {heading}" in system_prompt
+                    self.calls += 1
+                    return suggestion
+            return super().generate(system_prompt, user_prompt)
+
+    llm = IndustryLLM([summary, BRIEF])
+    retriever = FakeRetriever(make_papers())
+    client = TestClient(create_app(retriever, llm, BriefStore(tmp_path / "briefs")))
+    record = client.post("/api/ask", json={"question": "Can agents coordinate tasks?"}).json()
+    path = f"/api/briefs/{record['id']}"
+    approved = client.post(f"{path}/status", json={"status": "approved"}).json()
+
+    for industry, suggestion in suggestions.items():
+        response = client.post(f"{path}/industry-application", json={"industry": industry})
+        assert response.status_code == 200
+        assert response.json() == {"application": suggestion}
+
+    assert client.post(
+        f"{path}/industry-application", json={"industry": "Unknown"}
+    ).status_code == 422
+    assert client.get(path).json() == approved
+    assert len(retriever.calls) == 1
+    assert llm.calls == 2 + len(suggestions)
