@@ -1,0 +1,21 @@
+{
+  "query_id": "Q12",
+  "query": "Do AI agents actually carry out the plans they say they will follow?",
+  "audience": "executive",
+  "brief": "## Bottom Line  \nAI agents frequently diverge from the plans they announce: the top‑performing setup solved only 78 % of tasks when it could inspect the full state, and just 40 % when acting online, showing limited reliability of stated plans. [2610.22469v1]\n\n## Why It Matters  \n- A gap between offline (78 %) and online (40 %) success indicates agents often act without confirming that each step matches the intended plan, raising risk of unexpected behavior in production. [2610.22469v1]  \n- Agents failed to recognize unsolvable tasks in over 90 % of cases, meaning they may proceed on impossible goals and waste resources or damage reputation. [2610.22469v1]\n\n## What To Do  \n1. Require independent verification of an agent’s action trace against the declared plan before accepting outcomes, especially for high‑stakes decisions.  \n2. Pilot agents in a controlled environment that allows full state inspection to measure the offline‑online performance gap for your specific tasks.  \n3. Evaluate prompting costs versus benefits; since heavier prompts use 5–22× more tokens without clear gains, prioritize simpler prompting unless a clear improvement is demonstrated. [2610.22469v1]\n\n## Evidence Strength  \nMedium. The findings come from a single paper that tested four language models, six prompting strategies, and three architectures across five benchmark domains, but not in real‑world business settings. [2610.22469v1]\n\n## Caveats  \n- The summary provides no explicit limitations, so the results may not generalize to larger models, proprietary data, or your organization’s specific workflows.  \n- Token‑usage measurements relate only to the studied prompting methods; other efficiency techniques were not examined.  \n- Offline performance relied on full state inspection, which may be unavailable in production, limiting the applicability of the 78 % figure.",
+  "truncated": false,
+  "word_count": 274,
+  "citation_check": {
+    "cited": [
+      "2610.22469"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2609.38108",
+      "2610.06001",
+      "2610.07459",
+      "2610.08927"
+    ],
+    "cited_not_in_summary": []
+  }
+}
