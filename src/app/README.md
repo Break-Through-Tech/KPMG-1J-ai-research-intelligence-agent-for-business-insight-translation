@@ -86,3 +86,19 @@ API:
 `PUT` keeps any field you leave out, so ticking one checklist box can send just `{"checklist": [...]}`. Folders can be changed with `--adaptations-dir`, `--pilot-plans-dir` and `--comments-dir`.
 
 Tests: `tests/test_storage.py` (no API key needed) and `tests/test_app.py` (uses a fake retriever and LLM, so no API key is needed).
+
+## POC Starter
+
+On a brief page, under "Suggested industry applications". The user picks an industry, picks a saved use case or writes one, answers five short questions (who runs it, how long, which records or tools, how they will know it worked, biggest worry) and gets an editable pilot checklist of 8 to 10 steps.
+
+- **One model call** to generate: `POST /api/briefs/{brief_id}/pilot-checklist` (`{"industry", "use_case", "answers"}` returns `{"checklist": [{"text", "done"}]}`). It saves nothing. The prompt reads only the saved research summary and the team's answers, presents every step as a proposal, and marks assumptions with "(assumed)" (`src/translation/poc_prompts.py`).
+- **No model calls** to save, tick, edit, reopen or delete. The page saves the plan with the pilot plan routes above. It reuses the saved adaptation for that brief and industry, or creates one holding the use case, because a pilot plan belongs to an adaptation. Ticks and edits are saved as you go with `PUT /api/pilot-plans/{id}`.
+- Saved use cases for the chosen industry come from the brief's saved adaptations, so use cases saved by other screens appear as one-click suggestions.
+
+| File | What it does |
+|---|---|
+| `poc_starter.py` | The checklist route (`add_poc_routes`, called once from `server.py`) |
+| `static/poc.js`, `static/poc.css` | The section on the brief page. `app.js` calls `pocStarterSection()` and `bindPocStarter()` |
+| `../translation/poc_prompts.py` | The prompt and the parser for the model's reply |
+
+Tests: `tests/test_poc_starter.py` (no API key needed).

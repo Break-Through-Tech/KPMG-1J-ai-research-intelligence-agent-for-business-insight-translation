@@ -40,6 +40,7 @@ from src.translation.prompts import (
 )
 
 from .checks import run_checks
+from .poc_starter import add_poc_routes
 from .store import AdaptationStore, BriefStore, CommentStore, PilotPlanStore, ProjectStore
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -690,6 +691,9 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
         except KeyError:
             raise HTTPException(404, "Comment not found")
         return {"deleted": comment_id}
+
+    # POC Starter: turns a use case into a pilot checklist (src/app/poc_starter.py)
+    add_poc_routes(app, load, run_llm, llm)
 
     @app.get("/")
     def index():

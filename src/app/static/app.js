@@ -1246,6 +1246,7 @@ function briefPanel(record, entry, cited) {
           </div>
         </article>
         ${industryApplicationSection()}
+        ${pocStarterSection()}
         ${followupSection(record, entry)}
       </div>
       ${citedAside(record, cited, "Cited in this brief")}
@@ -1416,6 +1417,7 @@ function selectTab(tab, focus) {
 
 function bindBrief() {
   bindIndustryApplication(state.record.id);
+  bindPocStarter(state.record.id);
   const on = (selector, handler) => app.querySelectorAll(selector).forEach((el) => el.addEventListener("click", handler));
 
   const tabIds = TABS.map(([id]) => id);
