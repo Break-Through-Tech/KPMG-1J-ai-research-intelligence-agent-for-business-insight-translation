@@ -1,0 +1,19 @@
+{
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "temperature": 0.1,
+  "max_tokens": 4096,
+  "reasoning_effort": "low",
+  "audience": "executive",
+  "question_ids": [
+    "Q12",
+    "Q14",
+    "Q15"
+  ],
+  "system_prompt_sha256": "3671831930f800f05bf71545b2c977933a75c45d2e6abc4a83976714fca0b3dc",
+  "input_sha256": {
+    "Q12": "eff0c4ca83947e97b4532b08851f144a5e9e6574c19c42106389e798a2d4021f",
+    "Q14": "f6660257c63842414f83acd20bbd6736509e1e52fb19f549f605595be45b6434",
+    "Q15": "5ebd67f170362c2748b2e28b31af53478bbafa54eec90d61a06a0d8c666e0ee4"
+  }
+}

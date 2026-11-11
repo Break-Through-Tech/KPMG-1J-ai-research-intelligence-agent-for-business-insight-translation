@@ -1,0 +1,21 @@
+{
+  "query_id": "Q15",
+  "query": "How can the memory and compute cost of running long-context language models be reduced without losing accuracy?",
+  "audience": "executive",
+  "brief": "## Bottom Line  \nRunning smaller models with verification, adding neural‑memory modules, or using structured retrieval can cut memory and compute costs by 20‑80 % while keeping or improving accuracy, but the evidence comes from benchmark studies only. [2610.15372v1][2610.19210v1][2610.02687v2][2610.10778v1]\n\n## Why It Matters  \n- Eight parallel runs of a 7B model achieved the same or better accuracy than a 32B model while using ~4 × less memory and running up to 6 × faster, directly lowering hardware spend and energy use. [2610.15372v1]  \n- Memory‑augmented approaches (Titan‑Llama, GraphMemory, MemoWM) improved long‑context accuracy by 15‑26 percentage points and reduced memory needs by 24‑54 %, meaning cheaper GPUs can handle longer documents without sacrificing performance. [2610.19210v1][2610.02687v2][2610.10778v1]\n\n## What To Do  \n1. **Pilot a verified‑retry pipeline**: Run several instances of a compressed model (e.g., 7B Qwen) in parallel on critical code‑generation or reasoning tasks and select the best output using automated tests. Measure memory use and latency against your current large‑model baseline. [2610.15372v1]  \n2. **Evaluate a neural‑memory retrofit**: Replace attention layers of an existing small Llama‑3.2‑1B‑Instruct deployment with Titan‑Llama’s blockwise mask and neural memory modules; compare accuracy on your longest‑context workloads and note the 20 %+ prefill speed gain and 24 % memory reduction. [2610.19210v1]  \n3. **Test a retrieval‑based graph memory**: Implement a lightweight graph that stores reusable strategies and retrieves only relevant subgraphs per query; verify that token usage drops to 81‑85 % of current levels while maintaining downstream performance on your financial‑reasoning or similar tasks. [2610.02687v2]\n\n## Evidence Strength  \nMedium. The findings are based on four separate papers, each using benchmark datasets and specific model families; no real‑world production deployments are reported. [2610.15372v1][2610.19210v1][2610.02687v2][2610.10778v1]\n\n## Caveats  \n- The studies focus on synthetic or domain‑specific benchmarks (code generation, long‑context QA, financial reasoning); results may not transfer to your proprietary data or workloads.  \n- GraphMemory’s baseline exceeded the 48 GB memory limit of an RTX 6000 GPU, indicating that hardware constraints can still surface for very large contexts. [2610.02687v2]  \n- No explicit limitations are provided for the other methods, so additional hidden constraints (e.g., scaling to many parallel runs) may exist.",
+  "truncated": false,
+  "word_count": 345,
+  "citation_check": {
+    "cited": [
+      "2610.15372",
+      "2610.19210",
+      "2610.02687",
+      "2610.10778"
+    ],
+    "cited_not_retrieved": [],
+    "retrieved_not_cited": [
+      "2610.06387"
+    ],
+    "cited_not_in_summary": []
+  }
+}
