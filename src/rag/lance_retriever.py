@@ -115,6 +115,8 @@ def _evidence(row):
         "chunk_id": row["chunk_id"],
         "chunk_paper_id": f"{row['paper_id']}v{row['version']}",
         "best_chunk_section": row.get("section") or "",
+        # lets the pipeline's compressor tell when the best chunk is already a results chunk
+        "best_chunk_section_type": row.get("section_type") or "",
         "best_chunk_text": row["text"],
         # hybrid search returns a relevance score (higher is better),
         # vector-only search returns a distance (lower is better)

@@ -16,7 +16,9 @@ The team uses NVIDIA. On a Mac you can copy the key and run `export NVIDIA_API_K
 
 It needs the papers in `data/papers_clean.parquet` and the LanceDB index built from them in `data/index` (see `src/pipeline/README.md`, Setup). Startup takes a few seconds to load the embedding model. Paper title/abstract vectors are read from the index; if it was built before they were stored, they're embedded at startup instead, which takes longer.
 
-Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`, `--projects-dir`, `--adaptations-dir`, `--pilot-plans-dir`, `--comments-dir`.
+Instead of exporting, you can put the key in a `.env` file at the repo root (`NVIDIA_API_KEY=...`, git-ignored); the app reads it at startup. For the Market tab, also set `SEC_USER_AGENT` (see [Market scan](#market-scan)).
+
+Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`, `--projects-dir`, `--adaptations-dir`, `--pilot-plans-dir`, `--comments-dir`, `--market-scans-dir`, `--compress` and `--context-budget` (shorten the paper text sent to the summary step; off by default, see `src/pipeline/README.md`), `--compact-prompt` (shorter summary instructions, not recommended yet).
 
 ## What each button costs
 
@@ -26,8 +28,10 @@ Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoni
 | Rewrite for another audience | 1 (reuses the saved summary) |
 | Regenerate brief (after "Request changes") | 1 |
 | Follow-up question | 1 (answers from the saved summary, no new search) |
+| Run a market scan | 1 (plus 15-25 free SEC EDGAR requests) |
 | Open a saved brief, approve, request changes, copy link, copy for email or Slack, export PDF | 0 |
 | Create or edit a project, add or remove a brief, filter the Library | 0 |
+| Open, approve, copy or delete a saved market scan | 0 |
 
 Every answer is saved as a JSON file in `data/ui_briefs/` (git-ignored), so reopening a brief never calls the LLM again. Projects are saved the same way in `data/ui_projects/` (git-ignored).
 
@@ -43,15 +47,16 @@ The sidebar links to Home, Projects, Research (the most recent brief), Library a
   - Filters go to the retriever as `{"since", "until", "categories"}` (`src/rag/lance_retriever.py`, `clean_filters`) and are saved with the brief.
   - **Project** (shown once a project exists): file the new brief in a project and tailor it to that client. It defaults to the project you last opened.
 - **Projects** (`#/projects`): one project per client engagement, with name, client, industry, engagement goal and notes. Archived projects are hidden unless you tick "Show archived projects".
-  - **Project page** (`#/project/<id>`): the same question box as Home (briefs asked here are tailored to the client and saved in the project), the project's briefs (Remove takes a brief out of the project but keeps it in the Library), **Add a saved brief**, and the client details with **Edit details** (`#/project/<id>/edit`, which also archives or restores).
+  - **Project page** (`#/project/<id>`): the same question box as Home (briefs asked here are tailored to the client and saved in the project), the project's briefs (Remove takes a brief out of the project but keeps it in the Library), **Add a saved brief**, the market scans run on the project's briefs, and the client details with **Edit details** (`#/project/<id>/edit`, which also archives or restores).
   - A brief can be in several projects. The brief page lists its projects, with × to remove and **Add to project…** to file it in another.
-- **Brief** (`#/brief/<id>`, or `#/brief/<id>/review` to open a tab): status and evidence badges, the question, the Bottom Line as a subtitle, and four tabs:
+- **Brief** (`#/brief/<id>`, or `#/brief/<id>/review` to open a tab): status and evidence badges, the question, the Bottom Line as a subtitle, and five tabs:
   - **Brief:** the brief with the evidence meter, cited sources beside it, and the buttons: Export PDF, Copy for email, Copy for Slack, Copy link, Rewrite for another audience. A warning shows here if a citation check failed or the output was cut off.
   - **Follow-up questions** (under the brief): answered from the research summary only, with citations. If the summary doesn't cover it, the answer starts "Not covered:" and offers **Search new papers for this**, which fills in Home.
   - **Research summary:** the summary the brief was written from.
   - **Sources:** every retrieved paper, cited or not, with its arXiv link.
+  - **Market:** a market scan from SEC filings (see [Market scan](#market-scan)).
   - **Review:** automatic checks (every cited paper was retrieved; six template sections under 200 words; evidence rating; output not cut off) and the reviewer decision (Approve / Request changes with a note / Regenerate).
-- **Library** (`#/library`): every saved brief, with the projects each one is in. Filter by question text, audience, review status, evidence level, date created (last 7, 30 or 90 days) and project (including "Not in a project"). Filtering happens in the page, with no extra requests.
+- **Library** (`#/library`): every saved brief, with the projects each one is in. Filter by question text, audience, review status, evidence level, date created (last 7, 30 or 90 days), whether it has a market scan, and project (including "Not in a project"). Filtering happens in the page, with no extra requests.
 - **Review Queue** (`#/review`): briefs not yet approved.
 
 Copy for email and Copy for Slack turn citations into `[1]`, `[2]` numbers and add a source list with arXiv links. A brief that isn't approved is marked "Draft, awaiting KPMG review. Not for client use."
@@ -63,7 +68,7 @@ Copy for email and Copy for Slack turn citations into `[1]`, `[2]` numbers and a
 | `server.py` | FastAPI app (`create_app`) and the `python -m src.app` entry point |
 | `store.py` | Saves and lists briefs, projects, industry adaptations, pilot plans and comments as JSON files |
 | `checks.py` | Citation, template and evidence checks (no LLM) |
-| `static/` | The page: `index.html`, `app.css`, `app.js` (no build step) |
+| `static/` | The page: `index.html`, `app.css`, `app.js`, plus `poc.*` and `market.*` for those sections (no build step) |
 
 API for projects: `GET/POST /api/projects`, `GET/PUT /api/projects/{id}`, `POST /api/projects/{id}/briefs` (`{"brief_id"}`), `DELETE /api/projects/{id}/briefs/{brief_id}`. `POST /api/ask` takes an optional `project_id`, and every brief response includes `projects`.
 
@@ -102,3 +107,36 @@ On a brief page, under "Suggested industry applications". The user picks an indu
 | `../translation/poc_prompts.py` | The prompt and the parser for the model's reply |
 
 Tests: `tests/test_poc_starter.py` (no API key needed).
+
+## Market scan
+
+The **Market** tab on a brief page shows what public companies say in their SEC filings about the technology the research covers, and where that points to growth for client industries and for our firm.
+
+```bash
+export SEC_USER_AGENT="KPMG 1J research prototype you@school.edu"   # or put it in .env
+```
+
+SEC EDGAR is free and needs no account, but SEC asks every caller to name itself with a contact email in the User-Agent header and to stay under 10 requests a second (the client waits 0.15 s between requests). Without `SEC_USER_AGENT` the tab shows these setup steps instead of the form.
+
+How a scan is built (`src/market/scan.py`):
+
+1. **Search phrases:** suggested from the question, summary and paper titles by simple rules, with no LLM call, in the wording filers use ("algorithmic bias", not "AI bias", which has about 1 filing in 90 days). The consultant edits them; up to 4.
+2. **Counts** `[D1]...`: filings mentioning each phrase in the window (30, 90 or 180 days) against the same dates a year earlier, counted by EDGAR.
+3. **Filings** `[F1]...`: up to 8, one per company, taking turns between phrases. Annual and quarterly reports, current reports (8-K, 6-K), 20-F and S-1, plus press releases (EX-99). Contracts and merger agreements are left out, since they only match through legal definitions of "artificial intelligence". From each, the sentences mentioning the phrase with two either side.
+4. **Industry:** filtered by SIC code (Technology, Healthcare, Finance, Construction & Real Estate). Government agencies don't file with the SEC, so Government & Public Services adds the word "government" to the search instead.
+5. **One LLM call** (`src/translation/market_prompts.py`) writes seven sections: Market Snapshot, Who's Moving, Demand Signals, Research vs Market, Growth Opportunities, Risks & Headwinds, Watch List. Every claim cites a filing, a count or a paper from the research summary. Risk factors, press releases and business descriptions are described as what they are, and every opportunity is labeled as interpretation with a confidence.
+6. **Checks (no LLM):** every citation is one of the scan's sources; every number appears in a filing, a count or the summary; no opportunity is "for" a company named in the filings (companies are evidence, not sales targets, and audit independence rules may apply); at least 3 filings matched.
+
+Only the phrases and an industry word are sent to SEC, never client or project details. A scan is saved in `data/ui_market_scans/` (git-ignored) with all its sources and the date they were retrieved, and goes through the same review as a brief (Approve / Request changes). Running a new scan keeps the old ones, so they can be compared. The project page lists the scans for its briefs, and the Library can filter by "Has a market scan".
+
+| File | What it does |
+|---|---|
+| `market.py` | The routes (`add_market_routes`, called once from `server.py`) |
+| `../market/edgar.py` | SEC EDGAR client: full-text search, counts, filing text |
+| `../market/scan.py` | Phrase suggestions, filing selection, excerpts and checks |
+| `../translation/market_prompts.py` | The prompt |
+| `static/market.js`, `static/market.css` | The Market tab and the project page section |
+
+API: `GET /api/market/options`, `GET /api/briefs/{id}/market-phrases`, `GET/POST /api/briefs/{id}/market-scans` (POST `{"phrases", "industry", "lens": "client"|"firm"|"both", "window_days"}`), `GET /api/market-scans?project_id=`, `GET/DELETE /api/market-scans/{id}`, `POST /api/market-scans/{id}/status`.
+
+Tests: `tests/test_market.py` (fake EDGAR and LLM, no keys or network needed).

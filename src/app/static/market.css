@@ -1,0 +1,52 @@
+/* Market tab (market.js). Uses the colors and controls from app.css and poc.css. */
+
+.market .brief-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+.market-form, .market-review, .market-setup { gap: 16px; }
+.market-form .chip-row .btn[aria-pressed="true"] { background: var(--kpmg); color: var(--white); border-color: var(--kpmg); }
+
+.market-phrases { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.market-phrases legend { margin-bottom: 8px; }
+.market-phrase { display: flex; align-items: center; gap: 8px; width: min(420px, 100%); }
+.market-phrase .text-input { flex: 1; min-width: 0; }
+
+.market-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.market-options .select { width: 100%; min-height: 44px; }
+
+.hint-text, .small-label { margin: 0; font-size: 13px; color: var(--muted); }
+.small-label { font-weight: 600; color: var(--ink-strong); }
+
+/* the scan */
+.market-scan { gap: 18px; }
+.market-scan-head { display: flex; flex-direction: column; gap: 8px; }
+.market-fresh { margin: 0; font-size: 13px; color: var(--muted); }
+.market-caution {
+  margin: 0; padding: 10px 14px; border-radius: 10px;
+  background: var(--warn-bg); color: var(--warn-ink); font-size: 14px;
+}
+.cite--market { font-variant-numeric: tabular-nums; }
+
+.market-checks { max-width: none; }
+.market-review-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.market-review .note { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--neutral-bg); font-size: 14px; }
+.market-review .actions { border-top: 0; padding-top: 0; }
+
+/* sources */
+.market-aside .src { gap: 6px; }
+.market-aside .num { min-width: 28px; }
+.market-aside .ticker { font-weight: 500; color: var(--muted); font-size: 13px; }
+.market-aside details summary { cursor: pointer; font-size: 13px; color: var(--kpmg); }
+.market-aside blockquote {
+  margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--line-strong);
+  background: var(--sky-wash); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere;
+}
+.market-signals table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.market-signals th { text-align: left; font-weight: 600; color: var(--muted); padding: 4px 4px 4px 0; }
+.market-signals td { padding: 6px 4px 6px 0; border-top: 1px solid var(--line-soft); vertical-align: top; }
+.market-signals .change { font-weight: 700; white-space: nowrap; }
+.market-signals .change.up { color: var(--ok-ink); }
+.market-signals .change.down { color: var(--bad-ink); }
+
+@media (max-width: 700px) {
+  .market-options { grid-template-columns: minmax(0, 1fr); }
+}

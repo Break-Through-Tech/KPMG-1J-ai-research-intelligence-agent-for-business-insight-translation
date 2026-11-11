@@ -6,8 +6,9 @@
 # then open http://localhost:8000
 #
 # LLM calls per action: ask = 2, rewrite for another audience = 1,
-# follow-up question = 1, everything else (open, approve, request changes,
-# copy link, copy for email/Slack, projects) = 0.
+# follow-up question = 1, market scan = 1 (plus SEC EDGAR requests),
+# everything else (open, approve, request changes, copy link, copy for
+# email/Slack, projects) = 0.
 #
 # Projects hold a client's details and a list of briefs (a brief can be in
 # several projects). Asking inside a project adds the client details to the
@@ -30,6 +31,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from src.market.edgar import edgar_from_env
 from src.pipeline.pipeline import answer_followup, answer_query, translate_summary
 from src.translation.prompts import (
     AUDIENCES,
@@ -40,12 +42,23 @@ from src.translation.prompts import (
 )
 
 from .checks import run_checks
+from .market import add_market_routes
 from .poc_starter import add_poc_routes
-from .store import AdaptationStore, BriefStore, CommentStore, PilotPlanStore, ProjectStore
+from .store import (
+    AdaptationStore,
+    BriefStore,
+    CommentStore,
+    MarketScanStore,
+    PilotPlanStore,
+    ProjectStore,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
 STATUSES = {"draft", "approved", "changes"}
+
+# Page files that get a version in their link, so browsers never mix old and new
+STATIC_FILES = ("app.css", "app.js", "poc.css", "poc.js", "market.css", "market.js")
 
 PROJECT_STATUSES = {"active", "archived"}
 
@@ -160,7 +173,8 @@ def brief_entry(result, insight):
 
 
 def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
-               adaptations=None, pilot_plans=None, comments=None):
+               adaptations=None, pilot_plans=None, comments=None, compressor=None,
+               compact_prompt=False, market_scans=None, edgar=None):
     """
     retriever: anything with search(query, top_k) (see src/pipeline/pipeline.py)
     llm:       anything with generate(system_prompt, user_prompt)
@@ -170,6 +184,11 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
                CommentStore (each defaults to a folder next to the briefs)
     corpus:    {"papers": int, "first_date": str, "last_date": str} for the header
     examples:  example questions for the ask page
+    compressor: optional ContextCompressor that shortens the paper text before
+               the summary call (src/pipeline/compress.py)
+    compact_prompt: use the shorter summarization instructions
+    market_scans, edgar: a MarketScanStore and an EdgarClient for the Market tab
+               (src/app/market.py); edgar is None when SEC_USER_AGENT isn't set
     """
 
     app = FastAPI(title="Research Insight Agent")
@@ -182,6 +201,8 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
         pilot_plans = PilotPlanStore(Path(store.directory).parent / "ui_pilot_plans")
     if comments is None:
         comments = CommentStore(Path(store.directory).parent / "ui_comments")
+    if market_scans is None:
+        market_scans = MarketScanStore(Path(store.directory).parent / "ui_market_scans")
 
     # Adaptations, pilot plans and comments are read and rewritten as a whole too
     storage_lock = threading.Lock()
@@ -279,7 +300,7 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
         result = run_llm(lambda: answer_query(
             question, retriever, llm, top_k=request.top_k,
             translate=True, audience=request.audience, filters=filters,
-            client=client,
+            client=client, compressor=compressor, compact_prompt=compact_prompt,
         ))
 
         insight = result.pop("business_insight")
@@ -322,7 +343,12 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
 
     @app.get("/api/briefs")
     def list_briefs(limit: int = 20):
-        return store.list(limit=max(1, min(limit, 500)))
+        # how many market scans each brief has, for the Library filter
+        scan_counts = market_scans.counts()
+        return [
+            {**row, "market_scans": scan_counts.get(row["id"], 0)}
+            for row in store.list(limit=max(1, min(limit, 500)))
+        ]
 
     @app.get("/api/briefs/{brief_id}")
     def get_brief(brief_id: str):
@@ -695,13 +721,16 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
     # POC Starter: turns a use case into a pilot checklist (src/app/poc_starter.py)
     add_poc_routes(app, load, run_llm, llm)
 
+    # Market scans: SEC filings + one LLM call (src/app/market.py)
+    add_market_routes(app, load, run_llm, llm, market_scans, edgar, projects, now, STATUSES)
+
     @app.get("/")
     def index():
         # Versioned asset links, so a browser never pairs a new page with an old
         # cached app.css or app.js after the code changes
         version = static_version()
         html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-        for name in ("app.css", "app.js"):
+        for name in STATIC_FILES:
             html = html.replace(f'/static/{name}"', f'/static/{name}?v={version}"')
         return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
@@ -719,8 +748,8 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
 
 
 def static_version():
-    """Changes whenever app.css or app.js changes on disk."""
-    return str(int(max((STATIC_DIR / name).stat().st_mtime for name in ("app.css", "app.js"))))
+    """Changes whenever one of the page's CSS or JS files changes on disk."""
+    return str(int(max((STATIC_DIR / name).stat().st_mtime for name in STATIC_FILES)))
 
 
 def corpus_info(papers_path):
@@ -777,6 +806,14 @@ def main():
     parser.add_argument("--adaptations-dir", default="data/ui_adaptations")
     parser.add_argument("--pilot-plans-dir", default="data/ui_pilot_plans")
     parser.add_argument("--comments-dir", default="data/ui_comments")
+    parser.add_argument("--market-scans-dir", default="data/ui_market_scans")
+    parser.add_argument("--compress", action="store_true",
+                        help="shorten the retrieved passages before the summary call (src/pipeline/compress.py); "
+                             "off by default because it made answers slower in testing")
+    parser.add_argument("--context-budget", type=int, default=8000,
+                        help="estimated tokens of paper text in the summary prompt")
+    parser.add_argument("--compact-prompt", action="store_true",
+                        help="shorter summarization instructions with one example")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
@@ -790,6 +827,11 @@ def main():
 
     retriever = LanceCombinedRetriever(papers_path=args.papers, index_dir=args.index_dir)
 
+    from src.pipeline.compress import CompressSettings, ContextCompressor
+
+    compressor = None if not args.compress else ContextCompressor(
+        retriever.embedder, CompressSettings(budget_tokens=args.context_budget))
+
     app = create_app(
         retriever,
         llm,
@@ -800,6 +842,10 @@ def main():
         adaptations=AdaptationStore(args.adaptations_dir),
         pilot_plans=PilotPlanStore(args.pilot_plans_dir),
         comments=CommentStore(args.comments_dir),
+        compressor=compressor,
+        compact_prompt=args.compact_prompt,
+        market_scans=MarketScanStore(args.market_scans_dir),
+        edgar=edgar_from_env(),
     )
 
     import uvicorn

@@ -5,12 +5,13 @@ Takes a question in plain English and returns a cited summary of the relevant re
 ```
 question
   -> LanceCombinedRetriever (src/rag/lance_retriever.py)  top 5 papers + best supporting chunk each
+  -> ContextCompressor (compress.py, with --compress)     optional: shortens the passages, no LLM call
   -> format_retrieved_content                             paper ID, title, abstract, section, chunk text
   -> build_summarization_prompt (src/summarization)       Lakshmee's two-shot prompt
   -> LLM (Groq openai/gpt-oss-120b, or NVIDIA / Gemini)  4-section summary with [paper_id] citations
   -> check_citations                                      flags cited papers that were never retrieved
   -> build_business_prompt (src/translation)              reads ONLY the summary, never the paper text
-  -> LLM (same model)                                     5-section business brief with [paper_id] citations
+  -> LLM (same model)                                     6-section business brief with [paper_id] citations
   -> check_citations                                      also flags brief citations the summary didn't make
 ```
 
@@ -37,6 +38,7 @@ It is a separate step, not a longer summary prompt, so the facts (step 1) and th
 | File | Purpose |
 |---|---|
 | `pipeline.py` | `answer_query()`, `run_benchmark()`, formatting and citation check |
+| `compress.py` | `ContextCompressor`: shortens the paper text before the summary call |
 | `llm.py` | `LLM` client for Groq (default, same model and settings as the summarization testing), NVIDIA or Gemini |
 | `cli.py` | command line entry point |
 
@@ -94,6 +96,43 @@ Retrievers (`--retriever`), both on the LanceDB index:
 See `evaluation/results/retriever_comparison.md` for how they compare with the earlier Chroma retriever.
 
 Other options: `--top-k` (papers per answer, default 5), `--max-tokens` (default 4096) and `--reasoning-effort` (`low`/`medium`/`high`, default `low`). gpt-oss-120b's hidden reasoning counts toward `--max-tokens`, so at the original 1500 most 5-paper summaries were cut off. To re-run the benchmark with new settings, pass a new `--output` file; otherwise the run skips queries that are already answered.
+
+## Shortening the paper text (`compress.py`)
+
+The summary prompt carries each paper's title, abstract, best chunk, and its results and limitations passages: about 7,900 tokens of paper text on the benchmark questions. With `--compress`, `ContextCompressor` trims it before the summary call, without an LLM. **It is off by default**: in the comparison below it cut the prompt by 4% without accuracy problems, but answers took longer (25 s to 42 s on average) and total tokens didn't go down.
+
+1. **Repeated text:** neighbouring chunks of one section share about 200 characters, and passages can repeat the abstract; each is kept once.
+2. **Cleanup:** citation markers (`[12]`, `(Smith et al., 2025)`), URLs, LaTeX commands and markdown noise. Numbers and tables stay.
+3. **Sentences:** the sentences closest to the question (by the same embedding model) with **two sentences either side**, plus **every sentence with a number or a caveat** ("however", "only", "fails", "limitation"...) with one either side. Gaps are marked `[...]`, and the prompt is told not to connect statements across them.
+4. **Budget by rank** (`--context-budget`, default 8,000 estimated tokens): titles and abstracts always go in, then every paper's best chunk, then limitations passages, then results passages, higher-ranked papers first. A results passage goes last when the paper's best chunk is already from its results.
+
+Its settings are the accuracy-first ones the team chose. Measured on the 24 benchmark questions with `python -m evaluation.compare_context` (no API key needed):
+
+| Settings | Paper-text tokens | Numbers kept | Caveat sentences kept | Passages dropped per question |
+|---|---|---|---|---|
+| No compression | 7,913 | 100% | 100% | 0 |
+| **`--compress` settings: keep every number and caveat, budget 8,000** | **7,352 (-7%)** | **90%** | **95%** | **0.6 results** |
+| Same, budget 7,000 | 6,679 (-16%) | 77% | 85% | 2.2 results |
+| Numbers and caveats only in the more relevant half, 1 sentence of context, budget 6,000 | 5,645 (-29%) | 73% | 65% | 1.3 results |
+| Budget 5,000 | 4,812 (-39%) | 31% | 45% | 2.9 limitations, 3.8 results |
+
+Research text has a number or a caveat in most sentences, so keeping all of them keeps most of the text; larger savings only come from dropping facts. With `--compress`, each answer saves `context` (`tokens_before`, `tokens_after`, what was `dropped`); without it, `context` is `null`.
+
+`--compact-prompt` uses shorter summarization instructions with one example instead of two (about 750 instead of 1,430 tokens, `SUMMARIZATION_SYSTEM_PROMPT_COMPACT` in `src/summarization/prompts.py`). It is off by default because of the comparison below.
+
+### Comparison with the real model
+
+`python -m evaluation.compare_context --llm --provider nvidia --questions Q10,Q11,Q12,Q13,Q14,Q15` wrote one summary per question with each version (Nemotron Ultra, Nov 10 2026; results in `evaluation/results/context_compression_llm.*`). Averages over the 6 questions, token counts as reported by the API:
+
+| Version | Prompt tokens | Output tokens (incl. hidden reasoning) | Total | Seconds | Problems |
+|---|---|---|---|---|---|
+| Full (no compression, full instructions) | 8,127 | 1,506 | 9,633 | 25 | none new |
+| Compressed (`--compress`) | 7,821 (-4%) | 2,040 | 9,860 | 42 | none |
+| Compressed + `--compact-prompt` | 7,194 (-11%) | 2,829 | 10,022 | 57 | one summary cut off at the token limit; one number misstated ("true accuracy 0.51-0.52" where the paper says 0.52 confidence) |
+
+- No version cited a paper it hadn't retrieved. Five decimals in the Q10 summaries aren't in the paper text in any version, including the uncompressed one, so they don't come from compression.
+- The prompts got shorter, but the model's hidden reasoning got longer, so total tokens didn't go down in this sample. The visible summaries were about the same length (~670-780 tokens). With one run per question this could be chance; more questions and repeat runs would tell.
+- The shorter instructions are not ready: they produced the only accuracy error.
 
 ## Output fields
 

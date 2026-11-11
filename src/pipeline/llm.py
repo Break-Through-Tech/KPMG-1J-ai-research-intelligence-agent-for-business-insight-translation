@@ -46,6 +46,28 @@ BACKOFF_SECONDS = [15, 30, 60, 120, 120]
 DAILY_LIMIT_MARKERS = ["per day", "TPD", "RPD", "PerDay"]
 
 
+def load_env_file(path=".env"):
+    """
+    Read KEY=value lines from a git-ignored .env file into the environment, so an
+    API key doesn't have to be exported in every terminal. Variables that are
+    already set win. Spaces around = and quotes around the value are allowed.
+    """
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except OSError:
+        return
+
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip().strip("'\"")
+        if key and value:
+            os.environ.setdefault(key, value)
+
+
 def is_daily_limit(message):
     return any(marker.lower() in message.lower() for marker in DAILY_LIMIT_MARKERS)
 
@@ -107,12 +129,14 @@ class LLM:
 
         # "length" means the response hit max_tokens and was cut off
         self.last_finish_reason = None
+        self.last_usage = None
 
         # Free tiers limit tokens/requests per minute, so a rate limited
         # request is retried after a wait (sleep is swappable for tests)
         self.max_retries = max_retries
         self.sleep = sleep
 
+        load_env_file()
         key_variable = settings["key_variable"]
         api_key = os.environ.get(key_variable)
 
@@ -140,6 +164,13 @@ class LLM:
         response = self._create_with_retries(system_prompt, user_prompt)
 
         self.last_finish_reason = response.choices[0].finish_reason
+
+        # tokens the provider counted for this call, for comparing prompt sizes
+        usage = getattr(response, "usage", None)
+        self.last_usage = {
+            "prompt_tokens": getattr(usage, "prompt_tokens", None),
+            "completion_tokens": getattr(usage, "completion_tokens", None),
+        } if usage is not None else None
 
         text = response.choices[0].message.content
 
