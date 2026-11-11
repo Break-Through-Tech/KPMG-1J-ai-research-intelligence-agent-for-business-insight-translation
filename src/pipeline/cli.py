@@ -10,11 +10,16 @@
 #   lance-combined  title/abstract search + chunk search merged with RRF (default)
 #   lance           hybrid chunk search only, grouped into papers
 #
+# --compress shortens the retrieved passages before the summary call
+# (src/pipeline/compress.py). Off by default: in testing it saved 4% of the
+# prompt but the model reasoned longer, so answers were slower.
+#
 # Each answer also gets a business brief (src/translation) unless
 # --no-translate is given; --audience picks executive, risk or technical.
 
 import argparse
 
+from .compress import CompressSettings, ContextCompressor
 from .llm import DEFAULT_PROVIDER, LLM, PROVIDERS
 from .pipeline import answer_query, run_benchmark
 from src.translation.prompts import AUDIENCES, DEFAULT_AUDIENCE
@@ -153,6 +158,26 @@ def main():
         help="who the business brief is written for"
     )
 
+    parser.add_argument(
+        "--compress",
+        action="store_true",
+        help="shorten the retrieved passages before the summary call (src/pipeline/compress.py); "
+             "off by default because it made answers slower in testing"
+    )
+
+    parser.add_argument(
+        "--context-budget",
+        type=int,
+        default=CompressSettings.budget_tokens,
+        help="estimated tokens of paper text in the summary prompt"
+    )
+
+    parser.add_argument(
+        "--compact-prompt",
+        action="store_true",
+        help="shorter summarization instructions with one example"
+    )
+
     args = parser.parse_args()
 
     if not args.query and not args.benchmark:
@@ -180,6 +205,10 @@ def main():
         index_dir=args.index_dir
     )
 
+    compressor = None if not args.compress else ContextCompressor(
+        retriever.embedder, CompressSettings(budget_tokens=args.context_budget)
+    )
+
     if args.benchmark:
         run_benchmark(
             args.benchmark,
@@ -189,7 +218,9 @@ def main():
             top_k=args.top_k,
             delay=args.delay,
             translate=not args.no_translate,
-            audience=args.audience
+            audience=args.audience,
+            compressor=compressor,
+            compact_prompt=args.compact_prompt
         )
     else:
         print_answer(answer_query(
@@ -198,7 +229,9 @@ def main():
             llm,
             top_k=args.top_k,
             translate=not args.no_translate,
-            audience=args.audience
+            audience=args.audience,
+            compressor=compressor,
+            compact_prompt=args.compact_prompt
         ))
 
 

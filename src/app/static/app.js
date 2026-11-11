@@ -1,6 +1,6 @@
 // Research Insight Agent UI: one page, hash routes
 //   #/            Home (ask a question)
-//   #/brief/<id>  a saved brief (Brief / Research summary / Sources / Review tabs);
+//   #/brief/<id>  a saved brief (Brief / Research summary / Sources / Market / Review tabs);
 //                 #/brief/<id>/review opens a tab directly
 //   #/research    the most recent brief
 //   #/library     every saved brief, with filters
@@ -60,6 +60,7 @@ const TABS = [
   ["brief", "Brief"],
   ["summary", "Research summary"],
   ["sources", "Sources"],
+  ["market", "Market"],
   ["review", "Review"],
 ];
 
@@ -84,7 +85,7 @@ const state = {
   project: null,      // project currently open
   projectId: "",      // project picked on Home for the next question
   showArchived: false,
-  lib: { q: "", audience: "", status: "", evidence: "", date: "", project: "" },
+  lib: { q: "", audience: "", status: "", evidence: "", date: "", project: "", market: "" },
 };
 
 const app = document.getElementById("app");
@@ -719,6 +720,7 @@ function libraryMatches(briefs) {
     (!f.status || (b.status || "draft") === f.status) &&
     (!f.evidence || (f.evidence === "none" ? !b.evidence : b.evidence === f.evidence)) &&
     (!cutoff || (b.created_at && Date.parse(b.created_at) >= cutoff)) &&
+    (!f.market || (f.market === "yes") === (b.market_scans > 0)) &&
     (!f.project || (f.project === "none"
       ? !filed[b.id]
       : (filed[b.id] || []).some((p) => p.id === f.project))));
@@ -739,6 +741,7 @@ function libraryFilters() {
     ${libSelect("status", "Review status", [["", "Any status"], ...Object.entries(STATUS).map(([id, st]) => [id, st.pill])])}
     ${libSelect("evidence", "Evidence", [["", "Any evidence"], ...EVIDENCE_LEVELS.map((l) => [l, `${l} evidence`]), ["none", "Evidence not stated"]])}
     ${libSelect("date", "Created", LIB_DATES)}
+    ${libSelect("market", "Market scans", [["", "Any market scans"], ["yes", "Has a market scan"], ["no", "No market scan"]])}
     ${state.projects.length ? libSelect("project", "Project", [["", "Any project"], ["none", "Not in a project"],
       ...state.projects.map((p) => [p.id, p.name])]) : ""}
     <button type="button" class="btn btn--link" id="lib-clear">Clear filters</button>
@@ -1007,6 +1010,7 @@ function renderProject() {
               <button type="submit" class="btn">Add to project</button>
             </div>
           </form>` : ""}
+          ${projectMarketSection()}
         </section>
 
         <aside class="card project-details" aria-labelledby="details-h">
@@ -1024,6 +1028,7 @@ function renderProject() {
     </div>`;
 
   if (p.status !== "archived") bindAskControls(renderProject);
+  loadProjectMarket(p);
 
   document.getElementById("add-brief")?.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1370,6 +1375,7 @@ function renderBrief() {
     brief: () => briefPanel(record, entry, briefCited),
     summary: () => summaryPanel(record),
     sources: () => sourcesPanel(record, allCited),
+    market: () => marketPanel(record),
     review: () => reviewPanel(record, entry),
   };
 
@@ -1418,6 +1424,7 @@ function selectTab(tab, focus) {
 function bindBrief() {
   bindIndustryApplication(state.record.id);
   bindPocStarter(state.record.id);
+  bindMarket(state.record);
   const on = (selector, handler) => app.querySelectorAll(selector).forEach((el) => el.addEventListener("click", handler));
 
   const tabIds = TABS.map(([id]) => id);

@@ -174,3 +174,34 @@ class CommentStore(JsonStore):
         ]
         comments.sort(key=lambda c: c.get("created_at") or "")
         return comments
+
+
+class MarketScanStore(JsonStore):
+    """Market scans (src/app/market.py): SEC filings and the scan written from them, per brief."""
+
+    def __init__(self, directory="data/ui_market_scans"):
+        super().__init__(directory)
+
+    def list(self, brief_id=None, brief_ids=None):
+        """Short rows, newest first, for one brief or any of a set of briefs."""
+        wanted = set(brief_ids) if brief_ids is not None else None
+        rows = []
+        for scan in self._all():
+            if brief_id is not None and scan.get("brief_id") != brief_id:
+                continue
+            if wanted is not None and scan.get("brief_id") not in wanted:
+                continue
+            rows.append({
+                key: scan.get(key) for key in (
+                    "id", "brief_id", "query", "industry", "lens", "window_days",
+                    "phrases", "status", "created_at",
+                )
+            } | {"filings": len(scan.get("sources", {}).get("filings", []))})
+        return _newest_first(rows, field="created_at")
+
+    def counts(self):
+        """{brief_id: number of scans}, for the Library."""
+        counts = {}
+        for scan in self._all():
+            counts[scan.get("brief_id")] = counts.get(scan.get("brief_id"), 0) + 1
+        return counts

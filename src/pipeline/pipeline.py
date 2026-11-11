@@ -11,6 +11,7 @@ import pandas as pd
 
 from src.summarization.prompts import (
     SUMMARIZATION_SYSTEM_PROMPT,
+    SUMMARIZATION_SYSTEM_PROMPT_COMPACT,
     build_summarization_prompt
 )
 from src.translation.prompts import (
@@ -26,6 +27,12 @@ from src.translation.prompts import (
 # Matches citations like [2609.38107v1] or [2609.38107]
 CITATION_PATTERN = re.compile(r"\b(\d{4}\.\d{4,5}(?:v\d+)?)\b")
 
+# Put above the papers when the passages were shortened (src/pipeline/compress.py)
+EXCERPT_NOTE = (
+    "Note: passages are excerpts. [...] marks text that was left out; "
+    "do not connect statements across it."
+)
+
 NO_RESULTS_MESSAGE = (
     "No relevant research was found in the indexed papers for this question."
 )
@@ -39,10 +46,11 @@ def base_id(paper_id):
     return re.sub(r"v\d+$", "", str(paper_id).strip())
 
 
-def format_retrieved_content(papers):
+def format_retrieved_content(papers, excerpts=False):
     """
     Turn CombinedRetriever results into the text block the summarization
     prompt expects. Each paper is labelled with its ID so the LLM can cite it.
+    excerpts: the passages were shortened by the compressor, so say what [...] means
     """
 
     blocks = []
@@ -52,11 +60,16 @@ def format_retrieved_content(papers):
 
         block = (
             f"[{paper_id}] Title: {paper.get('title', '')}\n"
-            f"Abstract: {paper.get('abstract', '')}\n"
-            f"Section: {paper.get('best_chunk_section', '')}\n"
-            f"Chunk ID: {paper.get('chunk_id', '')}\n"
-            f"{paper.get('best_chunk_text', '')}"
+            f"Abstract: {paper.get('abstract', '')}"
         )
+
+        # the compressor (compress.py) leaves this empty when the budget ran out
+        if paper.get("best_chunk_text"):
+            block += (
+                f"\nSection: {paper.get('best_chunk_section', '')}\n"
+                f"Chunk ID: {paper.get('chunk_id', '')}\n"
+                f"{paper['best_chunk_text']}"
+            )
 
         # results and limitations passages from the Lance retrievers, named by the
         # section they came from, so a conclusion standing in for a missing
@@ -71,7 +84,12 @@ def format_retrieved_content(papers):
 
         blocks.append(block)
 
-    return "\n\n".join(blocks)
+    content = "\n\n".join(blocks)
+
+    if excerpts:
+        content = EXCERPT_NOTE + "\n\n" + content
+
+    return content
 
 
 def check_citations(summary, papers):
@@ -182,7 +200,8 @@ def answer_followup(query, summary, brief, papers, followup, llm,
 
 
 def answer_query(query, retriever, llm, top_k=5, translate=True,
-                 audience=DEFAULT_AUDIENCE, filters=None, client=None):
+                 audience=DEFAULT_AUDIENCE, filters=None, client=None,
+                 compressor=None, compact_prompt=False):
     """
     Run one question through retrieval, summarization and (unless
     translate=False) business translation.
@@ -194,6 +213,9 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
                support them (src/rag/lance_retriever.py)
     client:    optional client context for the brief step only; retrieval
                and the research summary never see it
+    compressor: optional ContextCompressor (src/pipeline/compress.py) that
+               shortens the paper text before the summary call
+    compact_prompt: use the shorter summarization instructions (one example)
     """
 
     if not isinstance(query, str) or not query.strip():
@@ -215,10 +237,17 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
             "business_insight": None
         }
 
-    retrieved_content = format_retrieved_content(papers)
-    prompt = build_summarization_prompt(query, retrieved_content)
+    context = None
+    if compressor is not None:
+        papers, context = compressor.compress(query, papers)
 
-    summary = llm.generate(SUMMARIZATION_SYSTEM_PROMPT, prompt)
+    retrieved_content = format_retrieved_content(papers, excerpts=compressor is not None)
+    prompt = build_summarization_prompt(query, retrieved_content, compact=compact_prompt)
+
+    summary = llm.generate(
+        SUMMARIZATION_SYSTEM_PROMPT_COMPACT if compact_prompt else SUMMARIZATION_SYSTEM_PROMPT,
+        prompt
+    )
 
     result = {
         "query": query,
@@ -228,6 +257,8 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
         # (read before step 2, which overwrites last_finish_reason)
         "truncated": getattr(llm, "last_finish_reason", None) == "length",
         "citation_check": check_citations(summary, papers),
+        # estimated tokens of paper text before and after compression, and what was left out
+        "context": context,
         "business_insight": None
     }
 
@@ -241,7 +272,7 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
 
 def run_benchmark(benchmark_path, output_path, retriever, llm, top_k=5,
                   delay=0, sleep=time.sleep, translate=True,
-                  audience=DEFAULT_AUDIENCE):
+                  audience=DEFAULT_AUDIENCE, compressor=None, compact_prompt=False):
     """
     Answer every benchmark query and write one JSON line per query.
     Queries already in the output file are skipped, so a failed run
@@ -276,7 +307,8 @@ def run_benchmark(benchmark_path, output_path, retriever, llm, top_k=5,
             print(f"Answering {row['query_id']}: {row['query']}")
 
             result = answer_query(row["query"], retriever, llm, top_k=top_k,
-                                  translate=translate, audience=audience)
+                                  translate=translate, audience=audience,
+                                  compressor=compressor, compact_prompt=compact_prompt)
 
             record = {
                 "query_id": row["query_id"],

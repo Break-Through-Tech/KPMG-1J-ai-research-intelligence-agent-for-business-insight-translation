@@ -1,4 +1,5 @@
 PLAN.md
+.env
 .vscode/
 __pycache__/
 *.pyc
@@ -28,4 +29,8 @@ data/release/
 
 # Briefs saved by the web UI (src/app)
 data/ui_briefs/
+data/ui_market_scans/
 data/ui_projects/
+data/ui_adaptations/
+data/ui_pilot_plans/
+data/ui_comments/

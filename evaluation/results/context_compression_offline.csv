@@ -1,0 +1,26 @@
+query_id,full_tokens,compressed_tokens,saved,dropped,numbers,numbers_kept_passages,caveats,caveats_kept_passages
+Q01,6041,4758,0.21238205595100146,"limitations#3, results#4, results#5",59/122,58/58,15/22,15/15
+Q02,9166,4875,0.4681431376827405,"limitations#2, limitations#3, limitations#4, limitations#5, results#1, results#2, results#3, results#4, results#5",14/59,8/8,13/36,13/13
+Q03,8398,4837,0.4240295308406764,"limitations#1, limitations#2, limitations#3, limitations#4, results#1, results#3, results#4, results#5",6/105,5/5,16/38,16/16
+Q04,9490,4859,0.48798735511064273,"limitations#1, limitations#3, limitations#4, limitations#5, results#1, results#2, results#3, results#5",29/79,23/23,10/47,10/10
+Q05,7990,4709,0.4106382978723404,"limitations#1, limitations#2, limitations#3, limitations#4, limitations#5, results#1, results#2, results#4, results#5",20/60,15/15,17/23,17/17
+Q06,8564,4880,0.43017281644091543,"limitations#2, limitations#3, limitations#5, results#1, results#2, results#4, results#5",12/25,12/12,12/32,12/12
+Q07,7963,4891,0.385784252166269,"limitations#2, limitations#3, results#1, results#2, results#3, results#4, results#5",20/48,19/19,18/43,18/18
+Q08,8753,4745,0.4579001485205072,"limitations#3, limitations#4, limitations#5, results#1, results#2, results#3, results#4, results#5",11/75,8/8,22/51,22/22
+Q09,7609,4794,0.3699566303062163,"limitations#4, results#1, results#2, results#4, results#5",16/46,13/13,20/36,20/20
+Q10,6832,4807,0.2963992974238876,"limitations#4, limitations#5, results#2, results#4, results#5",47/97,46/46,13/22,13/13
+Q11,7888,4813,0.3898326572008114,"limitations#1, limitations#3, limitations#4, limitations#5, results#1, results#2, results#3, results#4, results#5",7/118,4/4,19/31,19/19
+Q12,7110,4733,0.3343178621659635,"limitations#1, limitations#2, limitations#4, limitations#5, results#1, results#3, results#4",16/64,14/14,12/31,12/12
+Q13,7637,4856,0.3641482257430928,"limitations#3, limitations#4, limitations#5, results#2, results#3, results#4, results#5",44/62,41/41,9/28,9/9
+Q14,7605,4910,0.35437212360289283,"limitations#3, limitations#4, limitations#5, results#2, results#3, results#5, results#1",31/175,28/28,16/31,16/16
+Q15,7460,4917,0.34088471849865953,"main#5, limitations#2, limitations#3, limitations#5, results#2, results#4, results#5",47/113,45/45,12/32,12/12
+Q16,8262,4824,0.4161220043572985,"limitations#3, limitations#4, results#1, results#2, results#3, results#4, results#5",5/49,5/5,19/31,19/19
+Q17,7995,4711,0.41075672295184495,"limitations#3, limitations#5, results#1, results#2, results#3, results#4, results#5",11/102,10/10,18/42,18/18
+Q18,7629,4755,0.3767204089657884,"main#5, limitations#2, limitations#4, limitations#5, results#1, results#2, results#4",10/20,9/9,11/21,11/11
+Q19,7557,4790,0.36615058885801244,"limitations#3, limitations#4, results#1, results#2, results#3, results#4",35/66,31/31,21/31,21/21
+Q20,10566,4850,0.5409805035017983,"limitations#1, limitations#2, limitations#3, limitations#4, limitations#5, results#1, results#2, results#3, results#4, results#5",18/97,15/15,12/45,12/12
+Q21,8050,4827,0.4003726708074534,"main#5, limitations#2, limitations#4, limitations#5, results#2, results#3",28/46,24/24,19/45,19/19
+Q22,9175,4812,0.4755313351498638,"limitations#1, limitations#4, limitations#5, results#1, results#2, results#3, results#4, results#5",36/67,25/25,12/39,12/12
+Q23,6991,4869,0.3035331140037191,"limitations#3, results#1, results#4, results#5",32/96,24/24,13/26,13/16
+Q24,6102,4772,0.21796132415601444,"limitations#3, limitations#4, limitations#5",14/17,14/14,13/24,13/13
+Q25,6999,4709,0.3271895985140735,"limitations#3, limitations#5, results#1, results#2, results#4",25/102,21/21,15/28,15/15
