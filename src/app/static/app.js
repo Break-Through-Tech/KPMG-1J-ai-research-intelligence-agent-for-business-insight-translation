@@ -1304,7 +1304,9 @@ function reviewPanel(record, entry) {
           ${record.status !== "changes" ? '<button type="button" class="btn" data-decision="changes">Request changes</button>' : ""}
           ${record.status !== "approved" ? '<button type="button" class="btn btn--primary" data-decision="approved">Approve brief</button>' : ""}
         </div>` : ""}
-    </section>
+        </section>
+    ${commentsSection(record.id)}
+    ${sendToTeammateSection(record.id)}
   </div>`;
 }
 
@@ -1354,7 +1356,7 @@ async function changeProjects(request, done) {
 
 function commentsSection(briefId) {
   const items = state.comments;
-  return `<section class="card followups no-print" id="comments-section" aria-labelledby="comments-h">
+      return `<section class="card followups no-print" id="comments-section" aria-labelledby="comments-h" style="grid-column: 1 / -1">
     <h2 id="comments-h">Comments</h2>
     <div id="comments-list">
       ${items.length ? items.map((c) => `
@@ -1374,6 +1376,22 @@ function commentsSection(briefId) {
         <button type="submit" class="btn btn--primary">Post</button>
       </div>
       <p class="error" id="comment-error" role="alert" hidden></p>
+    </form>
+  </section>`;
+}
+
+function sendToTeammateSection(briefId) {
+  return `<section class="card decision" id="review-share" aria-labelledby="share-h" style="grid-column: 1 / -1">
+    <h2 id="share-h">Send to teammate</h2>
+    <p class="sub">Share this brief with a colleague — opens your email client with a pre-filled message.</p>
+    <form id="share-form">
+      <label for="share-name">Recipient name</label>
+      <input id="share-name" class="text-input" type="text" placeholder="e.g. Alex Smith" maxlength="120">
+      <label for="share-email">Recipient email *</label>
+      <input id="share-email" class="text-input" type="email" placeholder="colleague@kpmg.com" maxlength="200" required>
+      <div class="actions">
+        <button type="submit" class="btn btn--primary">Send brief link</button>
+      </div>
     </form>
   </section>`;
 }
@@ -1430,7 +1448,7 @@ function renderBrief() {
     <div class="panel" id="panel" role="tabpanel" aria-labelledby="tab-${state.tab}">
       ${panels[state.tab]()}
     </div>
-    ${commentsSection(record.id)}`;
+      `;
 
   bindBrief();
   state.reveal = false;
@@ -1488,6 +1506,26 @@ function bindComments(briefId) {
     }));
 }
 
+function bindSendToTeammate(briefId) {
+  const form = document.getElementById("share-form");
+  if (!form) return;
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = document.getElementById("share-name").value.trim();
+    const email = document.getElementById("share-email").value.trim();
+    if (!email) return;
+    const subject = encodeURIComponent(`Research brief: ${state.record.query}`);
+    const url = `${location.origin}${location.pathname}#/brief/${encodeURIComponent(briefId)}`;
+    const greeting = name ? `Hi ${name},\n\n` : "";
+    const body = encodeURIComponent(
+      `${greeting}I'd like to share this research brief with you:\n\n"${state.record.query}"\n\n${url}`
+    );
+    window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`, "_blank");
+    toast("Email client opened");
+    form.reset();
+  });
+}
+
 function bindBrief() {
   bindIndustryApplication(state.record.id);
   const on = (selector, handler) => app.querySelectorAll(selector).forEach((el) => el.addEventListener("click", handler));
@@ -1535,6 +1573,7 @@ function bindBrief() {
   });
 
   bindComments(state.record.id);
+  bindSendToTeammate(state.record.id);
 
   // Citation links scroll to the source card; papers not shown here open the Sources tab
   on("[data-src]", (e) => {
