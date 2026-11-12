@@ -79,6 +79,7 @@ const state = {
   tab: "brief",
   followup: "",
   followupBusy: false,
+  comments: [],
   reveal: false,      // fade in the Bottom Line once, when a brief first opens
   page: "home",       // "home" or "project": where an ask redraws while it runs
   projects: [],       // project list (with brief_ids)
@@ -1309,7 +1310,9 @@ function reviewPanel(record, entry) {
           ${record.status !== "changes" ? '<button type="button" class="btn" data-decision="changes">Request changes</button>' : ""}
           ${record.status !== "approved" ? '<button type="button" class="btn btn--primary" data-decision="approved">Approve brief</button>' : ""}
         </div>` : ""}
-    </section>
+        </section>
+    ${commentsSection(record.id)}
+    ${sendToTeammateSection(record.id)}
   </div>`;
 }
 
@@ -1355,6 +1358,48 @@ async function changeProjects(request, done) {
   } catch (error) {
     toast(error.message);
   }
+}
+
+function commentsSection(briefId) {
+  const items = state.comments;
+      return `<section class="card followups no-print" id="comments-section" aria-labelledby="comments-h" style="grid-column: 1 / -1">
+    <h2 id="comments-h">Comments</h2>
+    <div id="comments-list">
+      ${items.length ? items.map((c) => `
+        <div class="followup" data-comment-id="${esc(c.id)}">
+          <p class="fu-q">${esc(c.author)} &middot; <span class="sub">${formatDate(c.created_at)}</span></p>
+          <div class="fu-a"><p>${esc(c.text)}</p></div>
+          <button type="button" class="btn btn--link" data-delete-comment="${esc(c.id)}"
+            aria-label="Delete comment by ${esc(c.author)}">Delete</button>
+        </div>`).join("") : '<p class="intro">No comments yet.</p>'}
+    </div>
+    <form class="followup-form" id="comment-form">
+      <div class="row">
+        <label for="comment-author" class="sr-only">Your name</label>
+        <input id="comment-author" class="text-input" type="text" placeholder="Your name" maxlength="120">
+        <label for="comment-text" class="sr-only">Comment</label>
+        <input id="comment-text" class="text-input" type="text" placeholder="Add a comment…" maxlength="4000">
+        <button type="submit" class="btn btn--primary">Post</button>
+      </div>
+      <p class="error" id="comment-error" role="alert" hidden></p>
+    </form>
+  </section>`;
+}
+
+function sendToTeammateSection(briefId) {
+  return `<section class="card decision" id="review-share" aria-labelledby="share-h" style="grid-column: 1 / -1">
+    <h2 id="share-h">Send to teammate</h2>
+    <p class="sub">Share this brief with a colleague — opens your email client with a pre-filled message.</p>
+    <form id="share-form">
+      <label for="share-name">Recipient name</label>
+      <input id="share-name" class="text-input" type="text" placeholder="e.g. Alex Smith" maxlength="120">
+      <label for="share-email">Recipient email *</label>
+      <input id="share-email" class="text-input" type="email" placeholder="colleague@kpmg.com" maxlength="200" required>
+      <div class="actions">
+        <button type="submit" class="btn btn--primary">Send brief link</button>
+      </div>
+    </form>
+  </section>`;
 }
 
 function renderBrief() {
@@ -1409,7 +1454,8 @@ function renderBrief() {
 
     <div class="panel" id="panel" role="tabpanel" aria-labelledby="tab-${state.tab}">
       ${panels[state.tab]()}
-    </div>`;
+    </div>
+      `;
 
   bindBrief();
   state.reveal = false;
@@ -1419,6 +1465,72 @@ function selectTab(tab, focus) {
   state.tab = tab;
   renderBrief();
   if (focus) document.getElementById(`tab-${tab}`)?.focus();
+}
+
+function bindComments(briefId) {
+  const form = document.getElementById("comment-form");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const author = document.getElementById("comment-author").value.trim();
+    const text = document.getElementById("comment-text").value.trim();
+    const errorEl = document.getElementById("comment-error");
+
+    if (!author || !text) {
+      errorEl.textContent = "Please fill in your name and comment.";
+      errorEl.hidden = false;
+      return;
+    }
+    errorEl.hidden = true;
+
+    try {
+      const comment = await api("/api/comments", {
+        target_type: "brief", target_id: briefId, author, text,
+      });
+      state.comments.push(comment);
+      document.getElementById("comment-author").value = "";
+      document.getElementById("comment-text").value = "";
+      document.getElementById("comments-list").outerHTML = commentsSection(briefId)
+        .match(/<div id="comments-list">[\s\S]*?<\/div>/)[0];
+      renderBrief();
+    } catch (error) {
+      errorEl.textContent = error.message;
+      errorEl.hidden = false;
+    }
+  });
+
+  document.querySelectorAll("[data-delete-comment]").forEach((btn) =>
+    btn.addEventListener("click", async () => {
+      const commentId = btn.dataset.deleteComment;
+      try {
+        await api(`/api/comments/${commentId}`, undefined, "DELETE");
+        state.comments = state.comments.filter((c) => c.id !== commentId);
+        renderBrief();
+      } catch (error) {
+        toast(error.message);
+      }
+    }));
+}
+
+function bindSendToTeammate(briefId) {
+  const form = document.getElementById("share-form");
+  if (!form) return;
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = document.getElementById("share-name").value.trim();
+    const email = document.getElementById("share-email").value.trim();
+    if (!email) return;
+    const subject = encodeURIComponent(`Research brief: ${state.record.query}`);
+    const url = `${location.origin}${location.pathname}#/brief/${encodeURIComponent(briefId)}`;
+    const greeting = name ? `Hi ${name},\n\n` : "";
+    const body = encodeURIComponent(
+      `${greeting}I'd like to share this research brief with you:\n\n"${state.record.query}"\n\n${url}`
+    );
+    window.open(`mailto:${encodeURIComponent(email)}?subject=${subject}&body=${body}`, "_blank");
+    toast("Email client opened");
+    form.reset();
+  });
 }
 
 function bindBrief() {
@@ -1468,6 +1580,9 @@ function bindBrief() {
     state.error = "";
     location.hash = "#/";
   });
+
+  bindComments(state.record.id);
+  bindSendToTeammate(state.record.id);
 
   // Citation links scroll to the source card; papers not shown here open the Sources tab
   on("[data-src]", (e) => {
@@ -1555,9 +1670,14 @@ async function openBrief(id, tab) {
       state.reveal = true;
     }
     if (TABS.some(([t]) => t === tab)) state.tab = tab;
-    state.record = record;
+        state.record = record;
     state.view = record.audience;
     state.error = "";
+    try {
+      state.comments = await api(`/api/comments?target_type=brief&target_id=${encodeURIComponent(id)}`);
+    } catch {
+      state.comments = [];
+    }
     renderBrief();
   } catch (error) {
     app.innerHTML = `<p class="error" role="alert">${esc(error.message)}</p><p><a href="#/">Back to Home</a></p>`;
