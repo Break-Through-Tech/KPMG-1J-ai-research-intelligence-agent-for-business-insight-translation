@@ -764,10 +764,17 @@ def static_version():
     return str(int(max((STATIC_DIR / name).stat().st_mtime for name in STATIC_FILES)))
 
 
-def corpus_info(papers_path):
+def corpus_info(papers_path, index_dir=None):
+    """
+    What the header says is searchable. The count and dates come from the search
+    index's manifest when there is one, since papers in the dataset that aren't
+    embedded yet can't be found; the topic list comes from the dataset.
+    """
     import pandas as pd
 
     import pyarrow.parquet as pq
+
+    from src.indexing.manifest import load_manifest
 
     columns = ["published_date"]
     if "primary_category" in pq.read_schema(papers_path).names:
@@ -782,12 +789,25 @@ def corpus_info(papers_path):
         if "primary_category" in papers else []
     )
 
-    return {
+    info = {
         "papers": int(len(dates)),
         "first_date": dates.min().date().isoformat(),
         "last_date": dates.max().date().isoformat(),
         "categories": [{"id": c, "papers": int(n)} for c, n in categories],
+        "in_dataset": int(len(dates)),
     }
+
+    manifest = load_manifest(index_dir) if index_dir else None
+    if manifest and manifest.get("n_papers") and manifest.get("date_range"):
+        info.update({
+            "papers": int(manifest["n_papers"]),
+            "first_date": str(manifest["date_range"][0])[:10],
+            "last_date": str(manifest["date_range"][1])[:10],
+            "index_updated": manifest.get("updated_at", ""),
+            "backlog": int(manifest.get("backlog_papers") or 0),
+        })
+
+    return info
 
 
 def load_examples(benchmark_path):
@@ -849,7 +869,7 @@ def main():
         retriever,
         llm,
         BriefStore(args.briefs_dir),
-        corpus=corpus_info(args.papers),
+        corpus=corpus_info(args.papers, args.index_dir),
         examples=load_examples(args.benchmark),
         projects=ProjectStore(args.projects_dir),
         adaptations=AdaptationStore(args.adaptations_dir),

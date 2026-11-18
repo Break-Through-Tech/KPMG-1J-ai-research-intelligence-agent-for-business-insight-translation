@@ -154,6 +154,16 @@ function indexedText(long = true) {
   return long ? `${count}, ${formatDate(c.first_date, false)} to ${formatDate(c.last_date)}` : count;
 }
 
+// Hover text: papers downloaded but not searchable yet, and when the index was built
+function indexedTitle() {
+  const c = corpus();
+  const parts = [];
+  const waiting = (c.in_dataset || 0) - (c.papers || 0);
+  if (waiting > 0) parts.push(`${waiting.toLocaleString("en-US")} more papers are downloaded but not searchable yet.`);
+  if (c.index_updated) parts.push(`Search index built ${formatDate(c.index_updated)}.`);
+  return parts.join(" ");
+}
+
 function topicLabel(id) {
   return TOPIC_LABELS[id] || id;
 }
@@ -384,7 +394,7 @@ function setNav(page) {
 function topbarTitle(title) {
   topbar.className = "topbar";
   topbar.innerHTML = `<p class="topbar-title">${esc(title)}</p>
-    <p class="indexed"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
+    <p class="indexed" title="${esc(indexedTitle())}"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
 }
 
 function topbarSearch() {
@@ -396,7 +406,7 @@ function topbarSearch() {
       <input id="quick-q" type="text" placeholder="Search Research Topic" autocomplete="off">
       <button class="btn-research" type="submit">Research ${ARROW}</button>
     </form>
-    <p class="indexed"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
+    <p class="indexed" title="${esc(indexedTitle())}"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
 
   document.getElementById("quick-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -503,7 +513,7 @@ function askControls(inProject) {
           </button>
         </form>
 
-        <p class="indexed"><span class="dot" aria-hidden="true"></span>${esc(indexedText())}</p>
+        <p class="indexed" title="${esc(indexedTitle())}"><span class="dot" aria-hidden="true"></span>${esc(indexedText())}</p>
         ${state.busy ? progressList() : ""}
         ${state.error ? `<p class="error" role="alert">${esc(state.error)}</p>` : ""}
 

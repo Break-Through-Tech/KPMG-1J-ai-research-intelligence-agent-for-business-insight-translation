@@ -16,6 +16,8 @@ The team uses NVIDIA. On a Mac you can copy the key and run `export NVIDIA_API_K
 
 It needs the papers in `data/papers_clean.parquet` and the LanceDB index built from them in `data/index` (see `src/pipeline/README.md`, Setup). Startup takes a few seconds to load the embedding model. Paper title/abstract vectors are read from the index; if it was built before they were stored, they're embedded at startup instead, which takes longer.
 
+To get the newest papers, run `./scripts/get_latest_data.sh` and restart the app. It downloads the latest published dataset and index (about 1.5 GB) into those two places, and keeps the previous index as `data/index.previous`. The header ("N papers indexed from arXiv, <dates>") counts what the search index holds, read from `data/index/index_manifest.json`, because downloaded papers that aren't embedded yet can't be found. Hover over it to see how many more papers are waiting and when the index was built.
+
 Instead of exporting, you can put the key in a `.env` file at the repo root (`NVIDIA_API_KEY=...`, git-ignored); the app reads it at startup. For the Market tab, also set `SEC_USER_AGENT` (see [Market scan](#market-scan)).
 
 Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`, `--projects-dir`, `--adaptations-dir`, `--pilot-plans-dir`, `--comments-dir`, `--market-scans-dir`, `--presentations-dir`, `--compress` and `--context-budget` (shorten the paper text sent to the summary step; off by default, see `src/pipeline/README.md`), `--compact-prompt` (shorter summary instructions, not recommended yet).
