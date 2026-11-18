@@ -11,3 +11,4 @@ chromadb
 openai
 fastapi
 uvicorn
+python-pptx>=1.0  # Present tab's Download PowerPoint

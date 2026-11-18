@@ -35,7 +35,7 @@ Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoni
 | Open a saved brief, approve, request changes, copy link, copy for email or Slack, export PDF | 0 |
 | Create or edit a project, add or remove a brief, filter the Library | 0 |
 | Open, approve, copy or delete a saved market scan | 0 |
-| Open, edit, copy or delete a saved presentation | 0 |
+| Open, edit, copy, download or delete a saved presentation | 0 |
 
 Every answer is saved as a JSON file in `data/ui_briefs/` (git-ignored), so reopening a brief never calls the LLM again. Projects are saved the same way in `data/ui_projects/` (git-ignored).
 
@@ -162,14 +162,15 @@ The prompt allows only facts, numbers and paper IDs from the brief, the research
 
 The checks don't catch every wrong claim, so the deck is always labeled a draft. If the brief isn't approved, the tab and **Copy as text** say so.
 
-Slides are edited in place and save automatically, with no LLM call. Decks are saved in `data/ui_presentations/` (git-ignored). Generating again keeps the older decks, which can be reopened from the saved list. Export is **Copy as text** for now; a PowerPoint download would need `python-pptx`.
+Slides are edited in place and save automatically, with no LLM call. Decks are saved in `data/ui_presentations/` (git-ignored). Generating again keeps the older decks, which can be reopened from the saved list. **Download PowerPoint** saves the deck, edits included, as a `.pptx`. It has a title slide, one slide per outline slide, and a presenter-only Watch out for slide. The speaker notes, planned minutes and likely questions go in each slide's notes, so they show in Presenter View. If the brief isn't approved, the title slide says it's a draft. **Copy as text** gives the same outline as plain text. Neither calls the LLM.
 
 | File | What it does |
 |---|---|
 | `present.py` | The routes (`add_present_routes`, called once from `server.py`) and `check_deck` |
+| `present_pptx.py` | `build_pptx`: the PowerPoint download (`python-pptx`) |
 | `../translation/present_prompts.py` | Audiences, talk lengths, the prompt and `parse_deck` |
 | `static/present.js`, `static/present.css` | The Present tab |
 
-API: `GET /api/present/options`, `GET/POST /api/briefs/{id}/presentations` (POST `{"audience", "minutes", "adaptation_id"?, "pilot_plan_id"?, "market_scan_id"?}`; GET also lists the saved work that can be included), `GET/PUT/DELETE /api/presentations/{id}` (PUT `{"slides", "watch_outs"}`).
+API: `GET /api/present/options`, `GET/POST /api/briefs/{id}/presentations` (POST `{"audience", "minutes", "adaptation_id"?, "pilot_plan_id"?, "market_scan_id"?}`; GET also lists the saved work that can be included), `GET/PUT/DELETE /api/presentations/{id}` (PUT `{"slides", "watch_outs"}`), `GET /api/presentations/{id}/pptx`.
 
 Tests: `tests/test_present.py` (fake LLM, no keys needed).

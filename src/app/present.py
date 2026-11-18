@@ -9,17 +9,21 @@
 #                                           pilot_plan_id?, market_scan_id?}
 # GET    /api/presentations/{id}            one deck
 # PUT    /api/presentations/{id}            save edits {slides, watch_outs}
+# GET    /api/presentations/{id}/pptx       download as PowerPoint (no LLM)
 # DELETE /api/presentations/{id}
 #
 # Kept in its own file, like market.py and poc_starter.py, so it doesn't
 # collide with other changes to server.py.
 
+import re
 import threading
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 from pydantic import BaseModel
 
 from src.market.scan import _numbers
+
+from .present_pptx import build_pptx
 from src.pipeline.pipeline import CITATION_PATTERN, base_id, check_citations
 from src.translation.present_prompts import (
     AUDIENCE_LABELS,
@@ -38,6 +42,8 @@ from src.translation.present_prompts import (
 
 # How far the slides' minutes may add up from the talk length before it's flagged
 MINUTES_TOLERANCE = 0.25
+
+PPTX_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 # Longest saved material put into the prompt, so one big scan can't crowd out the brief
 EXTRA_CHARS = 4000
@@ -327,6 +333,20 @@ def add_present_routes(app, load, run_llm, llm, presentations, adaptations, pilo
             deck["updated_at"] = now()
             presentations.save(deck)
         return deck
+
+    @app.get("/api/presentations/{deck_id}/pptx")
+    def download_presentation(deck_id: str):
+        deck = load_deck(deck_id)
+        try:
+            # the brief's status now, so an approval since generating removes the draft line
+            status = load(deck["brief_id"]).get("status", "draft")
+        except HTTPException:
+            status = deck.get("brief_status", "draft")
+        data = build_pptx(deck, deck.get("query", ""), status)
+        slug = re.sub(r"[^a-z0-9]+", "-", deck.get("query", "").lower()).strip("-")[:50] or "presentation"
+        name = f"{slug}-{deck.get('audience', '')}-{deck.get('minutes', '')}min.pptx"
+        return Response(data, media_type=PPTX_TYPE,
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @app.delete("/api/presentations/{deck_id}")
     def delete_presentation(deck_id: str):

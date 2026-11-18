@@ -294,3 +294,84 @@ def test_options(tmp_path):
     options = TestClient(app).get("/api/present/options").json()
     assert [a["id"] for a in options["audiences"]] == ["executive", "risk", "technical", "consultant"]
     assert [l["minutes"] for l in options["lengths"]] == [5, 10, 20]
+
+
+# ---------- PowerPoint download ----------
+
+def _read_pptx(data):
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    prs = Presentation(BytesIO(data))
+    slides = []
+    for s in prs.slides:
+        text = [shape.text_frame.text for shape in s.shapes if shape.has_text_frame]
+        notes = s.notes_slide.notes_text_frame.text if s.has_notes_slide else ""
+        slides.append({"text": "\n".join(text), "notes": notes})
+    return slides
+
+
+def test_build_pptx_has_title_outline_and_watch_outs():
+    from datetime import date
+
+    from src.app.present_pptx import DRAFT_LINE, build_pptx
+
+    deck = {**parse_deck(DECK_TEXT), "audience": "consultant", "minutes": 10}
+    slides = _read_pptx(build_pptx(deck, "Can we trust AI reasoning?", "draft", today=date(2026, 11, 18)))
+
+    assert len(slides) == 1 + 4 + 1  # title, outline slides, watch out for
+    assert "Can we trust AI reasoning?" in slides[0]["text"]
+    assert "Consultant Team · 10 minutes · November 18, 2026" in slides[0]["text"]
+    assert DRAFT_LINE in slides[0]["text"]
+
+    first = slides[1]
+    assert "Don't trust the trace alone" in first["text"]
+    assert "31.6% of correct answers had invalid traces [2609.38107v1]." in first["text"]
+    assert "Say this." in first["notes"] and "Planned time: 2 min" in first["notes"]
+    assert "Q: Has this been tested in banking?" in first["notes"]
+    assert "A: No. The research doesn't cover banking." in first["notes"]
+
+    assert "Watch out for" in slides[-1]["text"] and "Presenter only" in slides[-1]["notes"]
+
+
+def test_build_pptx_approved_brief_has_no_draft_line():
+    from src.app.present_pptx import DRAFT_LINE, build_pptx
+
+    deck = {**parse_deck(DECK_TEXT), "audience": "executive", "minutes": 5}
+    assert DRAFT_LINE not in _read_pptx(build_pptx(deck, "Q?", "approved"))[0]["text"]
+
+
+def test_pptx_route_downloads_the_edited_deck_without_llm(present_setup):
+    client, llm, brief_id = present_setup
+    deck = client.post(f"/api/briefs/{brief_id}/presentations",
+                       json={"audience": "executive", "minutes": 10}).json()
+    slides = deck["slides"]
+    slides[0]["bullets"] = ["An edited bullet."]
+    client.put(f"/api/presentations/{deck['id']}", json={"slides": slides, "watch_outs": []})
+    calls = llm.calls
+
+    response = client.get(f"/api/presentations/{deck['id']}/pptx")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument.presentationml")
+    assert response.headers["content-disposition"] == \
+        'attachment; filename="can-we-trust-ai-reasoning-executive-10min.pptx"'
+    pptx_slides = _read_pptx(response.content)
+    assert "An edited bullet." in pptx_slides[1]["text"]
+    assert len(pptx_slides) == 1 + 4  # no watch-outs slide once they're cleared
+    assert llm.calls == calls
+
+    assert client.get("/api/presentations/20260101-000000-abcdef/pptx").status_code == 404
+
+
+def test_pptx_uses_the_brief_status_now(present_setup):
+    from src.app.present_pptx import DRAFT_LINE
+
+    client, _, brief_id = present_setup
+    deck = client.post(f"/api/briefs/{brief_id}/presentations",
+                       json={"audience": "executive", "minutes": 10}).json()
+    assert DRAFT_LINE in _read_pptx(client.get(f"/api/presentations/{deck['id']}/pptx").content)[0]["text"]
+
+    client.post(f"/api/briefs/{brief_id}/status", json={"status": "approved"})
+    assert DRAFT_LINE not in _read_pptx(client.get(f"/api/presentations/{deck['id']}/pptx").content)[0]["text"]

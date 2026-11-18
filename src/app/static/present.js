@@ -1,7 +1,8 @@
 // Present tab on the brief page (#/brief/<id>/present): turn the brief into a
 // slide outline with speaker notes, likely questions and things to watch out
 // for, for a chosen audience and talk length. Generating is one LLM call;
-// opening, editing (saved automatically) or deleting a saved deck costs nothing.
+// opening, editing (saved automatically), downloading as PowerPoint or deleting a
+// saved deck costs nothing.
 //
 // Loaded before app.js. It uses app.js helpers (state, esc, api, toast, copyText,
 // formatDate, icon, renderBrief, selectTab) only when the page draws. app.js
@@ -202,6 +203,7 @@ function presentDeckView(deck, record) {
       <p class="present-meta">Generated ${esc(formatDate(deck.created_at))}${extras.length ? ` · includes ${esc(extras.join(", "))}` : ""}</p>
       ${presentApprovalWarning(record)}
       <div class="actions no-print">
+        <button type="button" class="btn btn--primary" id="prs-pptx">Download PowerPoint</button>
         <button type="button" class="btn" id="prs-copy">Copy as text</button>
         <button type="button" class="btn" id="prs-delete">${prs.confirmDelete ? "Click again to delete" : "Delete"}</button>
         <span class="present-saving" id="prs-saving" aria-live="polite">${esc(presentSaveText())}</span>
@@ -410,6 +412,11 @@ function bindPresent(record) {
   on("#prs-copy", "click", async () => {
     await presentFlush();
     copyText(deckAsText(prs.current, state.record), "Slides copied");
+  });
+  on("#prs-pptx", "click", async () => {
+    // pending edits are saved first, so the file has them
+    await presentFlush();
+    window.location.href = `/api/presentations/${prs.current.id}/pptx`;
   });
   on("#prs-delete", "click", async () => {
     if (!prs.confirmDelete) {
