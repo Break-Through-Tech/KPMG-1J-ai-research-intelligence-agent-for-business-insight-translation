@@ -8,61 +8,26 @@
 import argparse
 import re
 import sys
-import time
-import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
-import requests
 
-API_URL = "https://export.arxiv.org/api/query"
-ATOM = "{http://www.w3.org/2005/Atom}"
-OPENSEARCH = "{http://a9.com/-/spec/opensearch/1.1/}"
+from . import arxiv_api
+from .arxiv_api import ArxivUnavailable  # noqa: F401  (raised from here, imported by callers)
+
+ATOM = arxiv_api.ATOM
 PAGE_SIZE = 2000        # largest page size the arXiv API supports
-RETRY_CODES = {406, 429, 500, 502, 503}
 
 
 def _base_id(arxiv_id: str) -> str:
     return re.sub(r"v\d+$", "", arxiv_id)
 
 
-class ArxivUnavailable(RuntimeError):
-    """arXiv couldn't be reached, so coverage can't be verified (this is not the same as papers missing)"""
-
-
-def _get(params, max_retries=6):
-    wait = 5
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = requests.get(API_URL, params=params, timeout=120)
-            status = resp.status_code
-        except requests.RequestException as e:
-            resp, status = None, type(e).__name__
-        if status == 200:
-            return resp.content
-        if resp is not None and status not in RETRY_CODES:
-            resp.raise_for_status()
-        if attempt < max_retries:
-            print(f"arXiv returned {status}, retrying in {wait}s ({attempt}/{max_retries})")
-            time.sleep(wait)
-            wait = min(wait * 2, 120)
-    raise ArxivUnavailable(f"arXiv API still failing after {max_retries} attempts (last: {status})")
-
-
 def arxiv_ids_in_window(category: str, start: datetime, end: datetime) -> set[str]:
     """base ids of every paper arXiv lists for the category with a submission time in [start, end]"""
-    query = f"{category} AND submittedDate:[{start:%Y%m%d%H%M} TO {end:%Y%m%d%H%M}]"
-    ids, offset, total = set(), 0, None
-    while total is None or offset < total:
-        root = ET.fromstring(_get({"search_query": query, "start": offset, "max_results": PAGE_SIZE}))
-        total = int(root.findtext(f"{OPENSEARCH}totalResults", "0"))
-        entries = root.findall(f"{ATOM}entry")
-        if not entries:
-            break
+    ids = set()
+    for entries in arxiv_api.search_pages(arxiv_api.window_query(category, start, end), PAGE_SIZE):
         ids.update(_base_id(e.findtext(f"{ATOM}id").rsplit("/", 1)[-1]) for e in entries)
-        offset += len(entries)
-        if offset < total:
-            time.sleep(3)  # arXiv asks for 3 seconds between API calls
     return ids
 
 

@@ -1,6 +1,6 @@
 // Research Insight Agent UI: one page, hash routes
 //   #/            Home (ask a question)
-//   #/brief/<id>  a saved brief (Brief / Research summary / Sources / Market / Review tabs);
+//   #/brief/<id>  a saved brief (Brief / Research summary / Sources / Market / Present / Review tabs);
 //                 #/brief/<id>/review opens a tab directly
 //   #/research    the most recent brief
 //   #/library     every saved brief, with filters
@@ -61,6 +61,7 @@ const TABS = [
   ["summary", "Research summary"],
   ["sources", "Sources"],
   ["market", "Market"],
+  ["present", "Present"],
   ["review", "Review"],
 ];
 
@@ -151,6 +152,16 @@ function indexedText(long = true) {
   if (!c.papers) return state.info ? "Corpus not loaded" : "Loading…";
   const count = `${c.papers.toLocaleString("en-US")} papers indexed${long ? " from arXiv" : ""}`;
   return long ? `${count}, ${formatDate(c.first_date, false)} to ${formatDate(c.last_date)}` : count;
+}
+
+// Hover text: papers downloaded but not searchable yet, and when the index was built
+function indexedTitle() {
+  const c = corpus();
+  const parts = [];
+  const waiting = (c.in_dataset || 0) - (c.papers || 0);
+  if (waiting > 0) parts.push(`${waiting.toLocaleString("en-US")} more papers are downloaded but not searchable yet.`);
+  if (c.index_updated) parts.push(`Search index built ${formatDate(c.index_updated)}.`);
+  return parts.join(" ");
 }
 
 function topicLabel(id) {
@@ -383,7 +394,7 @@ function setNav(page) {
 function topbarTitle(title) {
   topbar.className = "topbar";
   topbar.innerHTML = `<p class="topbar-title">${esc(title)}</p>
-    <p class="indexed"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
+    <p class="indexed" title="${esc(indexedTitle())}"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
 }
 
 function topbarSearch() {
@@ -395,7 +406,7 @@ function topbarSearch() {
       <input id="quick-q" type="text" placeholder="Search Research Topic" autocomplete="off">
       <button class="btn-research" type="submit">Research ${ARROW}</button>
     </form>
-    <p class="indexed"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
+    <p class="indexed" title="${esc(indexedTitle())}"><span class="dot" aria-hidden="true"></span>${esc(indexedText(false))}</p>`;
 
   document.getElementById("quick-form").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -502,7 +513,7 @@ function askControls(inProject) {
           </button>
         </form>
 
-        <p class="indexed"><span class="dot" aria-hidden="true"></span>${esc(indexedText())}</p>
+        <p class="indexed" title="${esc(indexedTitle())}"><span class="dot" aria-hidden="true"></span>${esc(indexedText())}</p>
         ${state.busy ? progressList() : ""}
         ${state.error ? `<p class="error" role="alert">${esc(state.error)}</p>` : ""}
 
@@ -1241,6 +1252,7 @@ function briefPanel(record, entry, cited) {
         <article class="card brief-card">
           <div class="doc${state.reveal ? " reveal" : ""}">${renderDoc(entry.brief, record.sources, null, entry.checks.evidence.level)}</div>
           <div class="actions">
+            <button type="button" class="btn btn--primary" id="to-present">Generate notes/slides</button>
             <button type="button" class="btn" id="print">Export PDF</button>
             <button type="button" class="btn" id="copy-email">Copy for email</button>
             <button type="button" class="btn" id="copy-slack">Copy for Slack</button>
@@ -1376,6 +1388,7 @@ function renderBrief() {
     summary: () => summaryPanel(record),
     sources: () => sourcesPanel(record, allCited),
     market: () => marketPanel(record),
+    present: () => presentPanel(record),
     review: () => reviewPanel(record, entry),
   };
 
@@ -1425,6 +1438,7 @@ function bindBrief() {
   bindIndustryApplication(state.record.id);
   bindPocStarter(state.record.id);
   bindMarket(state.record);
+  bindPresent(state.record);
   const on = (selector, handler) => app.querySelectorAll(selector).forEach((el) => el.addEventListener("click", handler));
 
   const tabIds = TABS.map(([id]) => id);
@@ -1458,6 +1472,7 @@ function bindBrief() {
       "Added to project");
   });
   on("#print", () => window.print());
+  on("#to-present", () => { selectTab("present"); window.scrollTo({ top: 0, behavior: "smooth" }); });
   on("#copy-link", () => copyText(location.href, "Link copied"));
   on("#copy-email", () => copyText(briefAsText(state.record, currentBrief(), "email"), "Copied for email"));
   on("#copy-slack", () => copyText(briefAsText(state.record, currentBrief(), "slack"), "Copied for Slack"));

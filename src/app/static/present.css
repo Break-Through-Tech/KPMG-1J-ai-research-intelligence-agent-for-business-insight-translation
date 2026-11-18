@@ -1,0 +1,41 @@
+/* Present tab (present.js). Uses the colors and controls from app.css, poc.css and market.css. */
+
+.present .brief-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+.present-form { gap: 16px; }
+.present-form .chip-row .btn[aria-pressed="true"] { background: var(--kpmg); color: var(--white); border-color: var(--kpmg); }
+.present-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.present-options .select { width: 100%; min-height: 44px; }
+.present-materials { border: 0; margin: 0; padding: 0; }
+.present-materials legend { margin-bottom: 8px; }
+
+.present-warning {
+  margin: 0; padding: 10px 14px; border-radius: 10px;
+  background: var(--warn-bg); color: var(--warn-ink); font-size: 14px;
+}
+
+.present-head-card { gap: 12px; }
+.present-meta { margin: 0; font-size: 13px; color: var(--muted); }
+.present-head-card .actions { border-top: 0; padding-top: 0; align-items: center; }
+.present-saving { margin-left: auto; font-size: 13px; color: var(--muted); }
+.present-checks { max-width: none; }
+
+/* one slide */
+.present-slide { gap: 10px; }
+.present-slide-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.present-num { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--kpmg); }
+.present-minutes { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.present-minutes .text-input { width: 72px; min-height: 36px; }
+.present-title { font-size: 18px; font-weight: 700; }
+.present-slide textarea.field, .present-watch textarea.field { min-height: 44px; resize: vertical; field-sizing: content; }
+.present-questions { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 10px; background: var(--sky-wash); }
+.present-question { display: flex; flex-direction: column; gap: 6px; }
+.present-question + .present-question { padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.present-question .text-input { font-weight: 600; }
+
+.present-watch { gap: 10px; }
+
+@media (max-width: 700px) {
+  .present-options { grid-template-columns: minmax(0, 1fr); }
+  .present-saving { margin-left: 0; width: 100%; }
+}

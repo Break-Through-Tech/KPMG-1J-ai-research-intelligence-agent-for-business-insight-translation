@@ -15,7 +15,8 @@ This folder contains the ingestion pipeline. It fetches recent papers from arXiv
 
 | file | what it does |
 |---|---|
-| `fetch_metadata.py` | searches arxiv by category and returns metadata for each paper: id, title, abstract, authors, categories, published/updated dates, PDF and abstract URLs and optionally stops at a `since` date |
+| `fetch_metadata.py` | searches arxiv by category and returns metadata for each paper: id, title, abstract, authors, categories, published/updated dates, PDF and abstract URLs. With `since`, it asks for a date range (`submittedDate:[...]`), oldest first, 500 per request |
+| `arxiv_api.py` | every arXiv API request (metadata and the coverage check): 3 seconds between requests, and on a 429 or 503 it waits 15s, 30s, 60s... up to 5 minutes, or as long as arXiv's `Retry-After` says. Set `ARXIV_USER_AGENT` to add a contact address, which arXiv recommends |
 | `download_pdfs.py` | downloads each paper's PDF into the raw PDF directory. Skips files that already exist and records a `download_status` (`downloaded`, `skipped_exists`, `failed`) and waits 3 seconds between downloads by arxiv rules |
 | `extract_text.py` | converts each PDF to markdown text with `pymupdf4llm` and records an `extraction_status` (`extracted`, `failed`, `not_attempted`) |
 | `clean_text.py` | replaces the annoying picture-text blocks that `pymupdf4llm` produces with `[Picture Omitted]` and skips papers with no extracted text |
@@ -35,7 +36,7 @@ run it from the project root as a module, so the relative imports work so for ex
 |---|---|---|
 | `--category` | `cat:cs.AI` | arXiv category query |
 | `--max-results` | `50` | mmnaximum number of papers to fetch |
-| `--since` | none | only include papers published on or after this date (`YYYY-MM-DD`) |
+| `--since` | none | only include papers published on or after this date (`YYYY-MM-DD`). arXiv is then asked one day at a time and each day is saved before the next is fetched, so if arXiv starts refusing requests, the days already done are kept |
 | `--raw-pdf-dir` | `data/raw_pdfs` | where PDFs are saved |
 | `--dataset-path` | `data/papers.parquet` | where the parquet dataset is saved |
 | `--max-papers` | none | process at most this many new papers this run, oldest first; the rest are left for the next run |

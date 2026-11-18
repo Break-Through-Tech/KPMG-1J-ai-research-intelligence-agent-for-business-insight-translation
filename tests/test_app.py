@@ -276,6 +276,30 @@ def test_corpus_info_lists_categories(tmp_path):
     assert info["last_date"] == "2026-10-03"
 
 
+def test_corpus_info_counts_what_the_index_can_search(tmp_path):
+    import json
+
+    import pandas as pd
+    from src.app.server import corpus_info
+
+    path = tmp_path / "papers.parquet"
+    pd.DataFrame({"published_date": ["2026-10-01", "2026-10-20", "2026-11-02"]}).to_parquet(path)
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+
+    # no manifest: the dataset is all there is to go on
+    assert corpus_info(path, index_dir)["last_date"] == "2026-11-02"
+
+    (index_dir / "index_manifest.json").write_text(json.dumps({
+        "n_papers": 2, "date_range": ["2026-10-01", "2026-10-20"],
+        "updated_at": "2026-10-28T08:00:00+00:00", "backlog_papers": 1,
+    }))
+    info = corpus_info(path, index_dir)
+
+    assert (info["papers"], info["first_date"], info["last_date"]) == (2, "2026-10-01", "2026-10-20")
+    assert info["in_dataset"] == 3 and info["backlog"] == 1
+
+
 # ---------- projects ----------
 
 class RecordingLLM(CountingLLM):
