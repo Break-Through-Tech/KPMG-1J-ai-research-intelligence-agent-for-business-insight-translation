@@ -86,7 +86,7 @@ Each paper takes about 13.5 seconds (arXiv's required 3 second pause between dow
 
 **How it makes sure no papers get lost**
 - New papers are processed **oldest first** and **saved every 100 papers**, so if a run crashes or runs long, everything done so far is kept and published.
-- Each run handles up to 1,000 papers (about 3.75 hours). If there are more, the rest is a **backlog** that the next run starts on, exactly where this one stopped, so there are no gaps.
+- Each run handles up to 700 papers (about 2.6 hours, under the workflow's 3-hour ingest step limit). If there are more, the rest is a **backlog** that the next run starts on, exactly where this one stopped, so there are no gaps.
 - If arXiv's API is having trouble, ingestion waits 5 minutes and tries again (up to 3 times). If GitHub has trouble publishing the release, that's retried too.
 - Text from the PDF reader is cleaned of broken characters before saving, so one odd paper can't crash a batch.
 - Papers whose PDF failed to download or extract are retried on the next runs (for up to 14 days).

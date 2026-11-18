@@ -3,6 +3,7 @@
 
 import argparse
 
+from ..vectorizing.embedder import DEFAULT_MODEL
 from .chunker import ChunkConfig
 from .pipeline import run_chunking
 
@@ -16,7 +17,7 @@ def main():
     parser.add_argument("--overlap-tokens", type=int, default=64)
     parser.add_argument("--min-section-tokens", type=int, default=30)
     # must match the embedding model, so chunks fit its 512-token limit; "none" uses the characters / 4 estimate
-    parser.add_argument("--tokenizer", default="BAAI/bge-small-en-v1.5")
+    parser.add_argument("--tokenizer", default=DEFAULT_MODEL)
     args = parser.parse_args()
 
     cfg = ChunkConfig(chunk_tokens=args.chunk_tokens, overlap_tokens=args.overlap_tokens,

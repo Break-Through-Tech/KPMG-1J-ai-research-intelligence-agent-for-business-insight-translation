@@ -14,7 +14,7 @@ from src.summarization.prompts import SUMMARIZATION_SYSTEM_PROMPT
 
 def make_papers():
     """
-    Two results in the format CombinedRetriever.search returns.
+    Two results in the format LanceCombinedRetriever.search returns.
     """
 
     return [

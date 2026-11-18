@@ -7,8 +7,8 @@ matplotlib
 pytest
 sentence-transformers
 lancedb
-chromadb
 openai
 fastapi
+httpx  # FastAPI's TestClient, used by the app tests (chromadb used to bring it in)
 uvicorn
 python-pptx>=1.0  # Present tab's Download PowerPoint

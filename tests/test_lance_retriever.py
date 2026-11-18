@@ -204,6 +204,25 @@ def test_index_without_paper_vectors_ranks_the_same(corpus, embedder, tmp_path):
     assert stored.paper_vectors == pytest.approx(fresh.paper_vectors, abs=1e-5)
 
 
+@pytest.mark.parametrize("columns", [
+    ["arxiv_id", "base_id", "version", "title", "abstract_clean"],   # papers_clean today
+    ["arxiv_id", "title", "abstract_clean"],                         # an older file: ids are parsed
+])
+def test_newest_version_wins_when_a_file_lists_a_paper_twice(corpus, embedder, tmp_path, columns):
+    # v10 must beat v9, which sorting the arxiv_id text would get wrong
+    papers = make_papers()
+    v9 = papers[papers["base_id"] == "2609.00001"].assign(arxiv_id="2609.00001v9", version=9)
+    v10 = v9.assign(arxiv_id="2609.00001v10", version=10, title="Newest title")
+    papers_path = tmp_path / "papers_twice.parquet"
+    pd.concat([v10, papers, v9])[columns].to_parquet(papers_path)
+
+    retriever = LanceRetriever(papers_path=str(papers_path), index_dir=corpus[1], embedder=embedder)
+
+    assert retriever.papers.loc["2609.00001", "arxiv_id"] == "2609.00001v10"
+    assert retriever.papers.loc["2609.00001", "title"] == "Newest title"
+    assert len(retriever.papers) == len(PAPERS)
+
+
 def test_keyword_match_finds_exact_names(retriever):
     # "zorblax" is a made-up word, so only keyword search can match it exactly
     assert retriever.search("zorblax", top_k=1)[0]["paper_id"] == "2609.00003v1"

@@ -15,12 +15,38 @@
 # name or project details.
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
-from src.pipeline.compress import split_sentences
-from src.pipeline.pipeline import base_id, check_citations
+from src.pipeline.pipeline import check_citations
+from src.preprocessing.metadata import ARXIV_ID, base_id
+from src.translation.text_checks import headings, numbers_in, section_text
 
 from .edgar import FORMS
+
+# ---------- sentences (for the excerpts around each mention) ----------
+
+# Words that end in a period without ending the sentence
+ABBREVIATIONS = {
+    "e.g", "i.e", "al", "fig", "figs", "eq", "eqs", "vs", "approx", "sec", "secs",
+    "tab", "no", "resp", "cf", "etc", "ref", "refs", "appx", "app", "ch", "dr", "mr", "ms",
+}
+SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9(\[\"“])|\n+")
+
+
+def split_sentences(text):
+    parts = [p.strip() for p in SENTENCE_END.split(text) if p and p.strip()]
+    sentences = []
+    for part in parts:
+        if sentences:
+            last_word = sentences[-1].rsplit(" ", 1)[-1].rstrip(".").lower()
+            # "et al." or "Fig." or a single initial: the sentence goes on
+            if last_word in ABBREVIATIONS or (len(last_word) == 1 and last_word.isalpha()):
+                sentences[-1] += " " + part
+                continue
+        sentences.append(part)
+    return sentences
+
 
 # ---------- choices offered in the UI ----------
 
@@ -157,6 +183,24 @@ def in_industry(filing, industry):
     return False
 
 
+# EDGAR requests in flight at once. The client spaces their starts to stay under
+# SEC's rate limit, so this only overlaps the time spent waiting for SEC to answer
+EDGAR_WORKERS = 4
+
+
+def _in_parallel(fn, items):
+    """[fn(item) for item in items] on a few threads, results in the same order.
+    The first error is raised, and requests not yet started are cancelled."""
+    items = list(items)
+    if len(items) <= 1:
+        return [fn(item) for item in items]
+    pool = ThreadPoolExecutor(max_workers=min(EDGAR_WORKERS, len(items)))
+    try:
+        return list(pool.map(fn, items))
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
+
+
 def edgar_query(phrase, industry):
     extra = INDUSTRIES.get(industry)
     return f'"{phrase}"' + (f" {extra}" if isinstance(extra, str) else "")
@@ -165,11 +209,16 @@ def edgar_query(phrase, industry):
 def demand_signals(edgar, phrases, industry, since, until):
     """Filings mentioning each phrase now vs. the same window a year earlier."""
     year = timedelta(days=365)
+    queries = [edgar_query(phrase, industry) for phrase in phrases]
+    # every phrase's count for both windows, requested in parallel
+    windows = ([(q, since, until) for q in queries]
+               + [(q, since - year, until - year) for q in queries])
+    counts = _in_parallel(lambda window: edgar.count(*window), windows)
+
     signals = []
     for number, phrase in enumerate(phrases, start=1):
-        query = edgar_query(phrase, industry)
-        recent = edgar.count(query, since, until)
-        earlier = edgar.count(query, since - year, until - year)
+        recent = counts[number - 1]
+        earlier = counts[len(queries) + number - 1]
         signals.append({
             "id": f"D{number}",
             "phrase": phrase,
@@ -186,8 +235,7 @@ def collect_filings(edgar, phrases, industry, since, until, max_filings=MAX_FILI
     between phrases so each phrase gets filings. Also returns how many companies
     in the industry were found, for the page.
     """
-    by_phrase = []
-    for phrase in phrases:
+    def matches_for(phrase):
         query = edgar_query(phrase, industry)
         # an industry filter, and dropping contracts, both thin out a page
         pages = INDUSTRY_PAGES if isinstance(INDUSTRIES.get(industry), list) else 2
@@ -198,7 +246,10 @@ def collect_filings(edgar, phrases, industry, since, until, max_filings=MAX_FILI
                         if useful_document(f) and in_industry(f, industry)]
             if len(matches) >= max_filings or (page + 1) * 100 >= result["total"]:
                 break
-        by_phrase.append((phrase, matches))
+        return phrase, matches
+
+    # phrases are searched in parallel; each phrase's pages stay in order
+    by_phrase = _in_parallel(matches_for, phrases)
 
     chosen = []
     companies = set()
@@ -270,11 +321,11 @@ def gather(edgar, phrases, industry, window_days, today=None):
     since = until - timedelta(days=window_days)
 
     signals = demand_signals(edgar, phrases, industry, since, until)
-    filings = []
-    for filing in collect_filings(edgar, phrases, industry, since, until):
-        quotes = excerpts(edgar.document_text(filing), filing["phrase"])
-        if quotes:
-            filings.append({**filing, "excerpts": quotes})
+    chosen = collect_filings(edgar, phrases, industry, since, until)
+    # documents are downloaded in parallel; each is cut to its excerpts right away,
+    # so a large filing's full text isn't kept around
+    quotes = _in_parallel(lambda filing: excerpts(edgar.document_text(filing), filing["phrase"]), chosen)
+    filings = [{**filing, "excerpts": found} for filing, found in zip(chosen, quotes) if found]
     for number, filing in enumerate(filings, start=1):
         filing["id"] = f"F{number}"
 
@@ -297,11 +348,6 @@ COMPANY_WORDS = {
 }
 
 
-def _section(text, heading):
-    match = re.search(rf"^## {re.escape(heading)}\s*$(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
-    return match.group(1) if match else ""
-
-
 def _names_company(text, filing):
     """Whether text names the filing's company, by ticker or by its distinctive first word."""
     if filing.get("ticker") and len(filing["ticker"]) >= 2 and re.search(
@@ -312,13 +358,6 @@ def _names_company(text, filing):
 
 
 SOURCE_CITE = re.compile(r"\[((?:[FD]\d+)(?:\s*[,;]\s*[FD]\d+)*)\]")
-NUMBER = re.compile(r"(?<![\w.])\d+(?:[.,]\d+)*%?")
-
-
-def _numbers(text):
-    return {n.rstrip(".,") for n in NUMBER.findall(text) if len(n.rstrip("%")) > 1 or "%" in n}
-
-
 def check_scan(text, gathered, record):
     """Citations that point nowhere, and numbers that appear in no source."""
     filing_ids = {f["id"] for f in gathered["filings"]}
@@ -341,22 +380,22 @@ def check_scan(text, gathered, record):
                  for s in gathered["signals"]),
         f"{gathered['since']} {gathered['until']}",
     ])
-    sources_numbers = _numbers(source_text)
+    sources_numbers = numbers_in(source_text)
     # paper IDs are checked above; window lengths may be quoted too
     allowed = {p for p in papers["cited"]} | {str(len(gathered["filings"]))}
     ungrounded = sorted(
-        n for n in _numbers(SOURCE_CITE.sub("", text))
-        if n not in sources_numbers and n not in allowed and not re.match(r"^\d{4}\.\d{4,5}", n)
+        n for n in numbers_in(SOURCE_CITE.sub("", text))
+        if n not in sources_numbers and n not in allowed and not re.match(ARXIV_ID, n)
     )
 
     from src.translation.market_prompts import MARKET_SECTIONS
 
     # who each opportunity is "For:" (naming a company as evidence in "Why now" is fine)
     targets = " ".join(re.findall(r"For:\s*(.*?)(?:\.\s+Why now:|$)",
-                                  _section(text, "Growth Opportunities"), re.MULTILINE))
+                                  section_text(text, "Growth Opportunities"), re.MULTILINE))
     named = [f["company"] for f in gathered["filings"] if _names_company(targets, f)]
 
-    headings = [h.strip() for h in re.findall(r"^## (.+)$", text, re.MULTILINE)]
+    found = headings(text)
     dates = sorted(f["filed"] for f in gathered["filings"] if f["filed"])
 
     return {
@@ -370,7 +409,7 @@ def check_scan(text, gathered, record):
         "numbers": {"ok": not ungrounded, "ungrounded": ungrounded},
         # companies from the filings named as who an opportunity is for: evidence, not targets
         "targets": {"ok": not named, "named": named},
-        "template": {"ok": headings == MARKET_SECTIONS, "missing": [h for h in MARKET_SECTIONS if h not in headings]},
+        "template": {"ok": found == MARKET_SECTIONS, "missing": [h for h in MARKET_SECTIONS if h not in found]},
         "sources": {
             "filings": len(gathered["filings"]),
             "companies": len({f["cik"] for f in gathered["filings"]}),

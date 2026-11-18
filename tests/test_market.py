@@ -13,6 +13,7 @@ from src.market.scan import (
     excerpts,
     gather,
     in_industry,
+    split_sentences,
     suggest_phrases,
     useful_document,
 )
@@ -123,6 +124,11 @@ def test_government_adds_a_search_word():
     assert edgar.queries == ['"chatbot" government']
 
 
+def test_split_sentences_keeps_abbreviations_together():
+    sentences = split_sentences("Smith et al. found gains. See Fig. 2 for details. It works, e.g. on GSM8K.")
+    assert sentences == ["Smith et al. found gains.", "See Fig. 2 for details.", "It works, e.g. on GSM8K."]
+
+
 def test_excerpts_keep_two_sentences_each_side_and_skip_repeats():
     text = ("ea001ex99-1.htm Large language model launch. One. Two. Three. We built a large language model. "
             "Four. Five. Six.")
@@ -215,6 +221,61 @@ def test_client_sends_user_agent_and_rate_limits():
     assert session.calls[0][2]["User-Agent"] == "Team you@school.edu"
     assert session.calls[1][1]["from"] == 100
     assert waits == [pytest.approx(0.15)]
+
+
+def test_rate_limit_holds_across_threads():
+    # every thread books its own slot, 0.15 s after the previous one, even when they all arrive at once
+    import threading
+
+    waits = []
+    edgar = EdgarClient("Team you@school.edu", session=FakeSession(), sleep=waits.append, clock=lambda: 0.0)
+    threads = [threading.Thread(target=edgar._wait) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(waits) == [pytest.approx(0.15 * n) for n in range(1, 8)]
+
+
+class SlowEdgar(FakeEdgar):
+    """Each document takes a different time to arrive, and the most downloads at once is recorded."""
+
+    def __init__(self, filings):
+        super().__init__(filings)
+        import threading
+        self.lock = threading.Lock()
+        self.in_flight = self.most_in_flight = 0
+
+    def document_text(self, f):
+        import time
+        with self.lock:
+            self.in_flight += 1
+            self.most_in_flight = max(self.most_in_flight, self.in_flight)
+        time.sleep(0.05 * (5 - int(f["cik"])))   # later filings finish first
+        with self.lock:
+            self.in_flight -= 1
+        return f"{f['company']} uses large language models in its products. Revenue grew."
+
+
+def test_gather_downloads_in_parallel_and_keeps_the_order():
+    edgar = SlowEdgar([filing(n, f"Company {n}") for n in range(1, 5)])
+    gathered = gather(edgar, ["large language models"], "Cross-industry", 90, today=TODAY)
+    assert [(f["id"], f["company"]) for f in gathered["filings"]] == [
+        ("F1", "Company 1"), ("F2", "Company 2"), ("F3", "Company 3"), ("F4", "Company 4")]
+    assert gathered["filings"][0]["excerpts"][0].startswith("Company 1 uses large language models")
+    assert edgar.most_in_flight > 1
+
+
+def test_demand_signals_keep_each_phrase_with_its_counts():
+    class CountsByPhrase(FakeEdgar):
+        def count(self, query, since, until, forms=None):
+            recent = until.year == TODAY.year
+            return {('"agentic AI"', True): 30, ('"agentic AI"', False): 10,
+                    ('"chatbot"', True): 5, ('"chatbot"', False): 20}[(query, recent)]
+
+    signals = gather(CountsByPhrase([]), ["agentic AI", "chatbot"], "Cross-industry", 90, today=TODAY)["signals"]
+    assert [(s["id"], s["phrase"], s["recent"], s["year_earlier"], s["change"]) for s in signals] == [
+        ("D1", "agentic AI", 30, 10, 200), ("D2", "chatbot", 5, 20, -75)]
 
 
 def test_client_errors_are_explained():

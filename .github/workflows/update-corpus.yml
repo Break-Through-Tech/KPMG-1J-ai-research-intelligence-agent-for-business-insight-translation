@@ -21,7 +21,7 @@ on:
     inputs:
       max_papers:
         description: "Max new papers to process this run (try 20 for a quick test). The rest wait for the next run."
-        default: "1000"
+        default: "700"
       first_run_days:
         description: "Days to look back if no dataset has been published yet"
         default: "7"
@@ -48,9 +48,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       PYTHON: python
       PYTHONUNBUFFERED: "1"
-      MAX_PAPERS: ${{ inputs.max_papers || '1000' }}
+      MAX_PAPERS: ${{ inputs.max_papers || '700' }}
       FIRST_RUN_DAYS: ${{ inputs.first_run_days || '7' }}
       RUN_CHECK: "false"   # the coverage check runs as the last step instead, after publishing
+      RUN_PREPROCESS: "false"   # the "Preprocess whatever was saved" step does it once, even if ingestion timed out
 
     steps:
       - name: Check out repo
@@ -70,7 +71,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: hf-models-bge-small-en-v1.5
+          # changes when embedder.py (which names DEFAULT_MODEL) changes, so a new model is downloaded
+          key: hf-models-${{ hashFiles('src/vectorizing/embedder.py') }}
 
       - name: Run tests
         run: python -m pytest tests/ -q

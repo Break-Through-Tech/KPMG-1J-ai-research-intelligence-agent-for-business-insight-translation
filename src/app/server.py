@@ -43,6 +43,7 @@ from src.translation.prompts import (
 )
 
 from .checks import run_checks
+from .common import StatusRequest, load_or_404
 from .market import add_market_routes
 from .poc_starter import add_poc_routes
 from .present import add_present_routes
@@ -153,11 +154,6 @@ class FollowupRequest(BaseModel):
     question: str
 
 
-class StatusRequest(BaseModel):
-    status: str
-    note: str = ""
-
-
 class RewriteRequest(BaseModel):
     audience: str
 
@@ -177,9 +173,8 @@ def brief_entry(result, insight):
 
 
 def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
-               adaptations=None, pilot_plans=None, comments=None, compressor=None,
-               compact_prompt=False, market_scans=None, edgar=None,
-               presentations=None):
+               adaptations=None, pilot_plans=None, comments=None,
+               market_scans=None, edgar=None, presentations=None):
     """
     retriever: anything with search(query, top_k) (see src/pipeline/pipeline.py)
     llm:       anything with generate(system_prompt, user_prompt)
@@ -189,9 +184,6 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
                CommentStore (each defaults to a folder next to the briefs)
     corpus:    {"papers": int, "first_date": str, "last_date": str} for the header
     examples:  example questions for the ask page
-    compressor: optional ContextCompressor that shortens the paper text before
-               the summary call (src/pipeline/compress.py)
-    compact_prompt: use the shorter summarization instructions
     market_scans, edgar: a MarketScanStore and an EdgarClient for the Market tab
                (src/app/market.py); edgar is None when SEC_USER_AGENT isn't set
     presentations: a PresentationStore for the Present tab (src/app/present.py)
@@ -226,20 +218,14 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
             raise HTTPException(400, f"Unknown audience {audience!r}")
 
     def load(brief_id):
-        try:
-            return store.load(brief_id)
-        except KeyError:
-            raise HTTPException(404, "Brief not found")
+        return load_or_404(store, brief_id, "Brief")
 
     def with_projects(record):
         """The brief plus the projects it's in, for the brief page."""
         return {**record, "projects": projects.projects_for(record["id"])}
 
     def load_project(project_id):
-        try:
-            return projects.load(project_id)
-        except KeyError:
-            raise HTTPException(404, "Project not found")
+        return load_or_404(projects, project_id, "Project")
 
     def apply_project_fields(project, request):
         for field, limit in PROJECT_FIELDS.items():
@@ -308,7 +294,7 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
         result = run_llm(lambda: answer_query(
             question, retriever, llm, top_k=request.top_k,
             translate=True, audience=request.audience, filters=filters,
-            client=client, compressor=compressor, compact_prompt=compact_prompt,
+            client=client,
         ))
 
         insight = result.pop("business_insight")
@@ -483,12 +469,6 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
 
     # ---------- industry adaptations, pilot plans, comments ----------
 
-    def load_from(kind_store, record_id, label):
-        try:
-            return kind_store.load(record_id)
-        except KeyError:
-            raise HTTPException(404, f"{label} not found")
-
     def clean_name(field, value):
         value = (value or "").strip()
         if len(value) > NAME_LIMIT:
@@ -525,7 +505,7 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
             "adaptation": (adaptations, "Adaptation"),
             "pilot_plan": (pilot_plans, "Pilot plan"),
         }[target_type]
-        load_from(kind_store, target_id, label)
+        load_or_404(kind_store, target_id, label)
 
     def delete_comments_on(target_type, target_id):
         for comment in comments_on(target_type, target_id):
@@ -615,12 +595,12 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
 
     @app.get("/api/adaptations/{adaptation_id}")
     def get_adaptation(adaptation_id: str):
-        return full_adaptation(load_from(adaptations, adaptation_id, "Adaptation"))
+        return full_adaptation(load_or_404(adaptations, adaptation_id, "Adaptation"))
 
     @app.put("/api/adaptations/{adaptation_id}")
     def update_adaptation(adaptation_id: str, request: AdaptationRequest):
         with storage_lock:
-            adaptation = load_from(adaptations, adaptation_id, "Adaptation")
+            adaptation = load_or_404(adaptations, adaptation_id, "Adaptation")
             apply_adaptation_fields(adaptation, request)
             adaptations.save(adaptation)
         return full_adaptation(adaptation)
@@ -629,7 +609,7 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
     def delete_adaptation(adaptation_id: str):
         # Its pilot plans and all their comments go with it
         with storage_lock:
-            load_from(adaptations, adaptation_id, "Adaptation")
+            load_or_404(adaptations, adaptation_id, "Adaptation")
             for plan in pilot_plans.list(adaptation_id=adaptation_id):
                 delete_comments_on("pilot_plan", plan["id"])
                 pilot_plans.delete(plan["id"])
@@ -645,12 +625,12 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
 
     @app.get("/api/adaptations/{adaptation_id}/pilot-plans")
     def list_adaptation_pilot_plans(adaptation_id: str):
-        load_from(adaptations, adaptation_id, "Adaptation")
+        load_or_404(adaptations, adaptation_id, "Adaptation")
         return pilot_plans.list(adaptation_id=adaptation_id)
 
     @app.post("/api/adaptations/{adaptation_id}/pilot-plans")
     def create_pilot_plan(adaptation_id: str, request: PilotPlanRequest):
-        adaptation = load_from(adaptations, adaptation_id, "Adaptation")
+        adaptation = load_or_404(adaptations, adaptation_id, "Adaptation")
         plan = {
             "id": pilot_plans.new_id(),
             "adaptation_id": adaptation_id,
@@ -668,14 +648,14 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
 
     @app.get("/api/pilot-plans/{plan_id}")
     def get_pilot_plan(plan_id: str):
-        return full_pilot_plan(load_from(pilot_plans, plan_id, "Pilot plan"))
+        return full_pilot_plan(load_or_404(pilot_plans, plan_id, "Pilot plan"))
 
     @app.put("/api/pilot-plans/{plan_id}")
     def update_pilot_plan(plan_id: str, request: PilotPlanRequest):
         # Fields left out keep their value, so ticking one checklist box can
         # send just the checklist
         with storage_lock:
-            plan = load_from(pilot_plans, plan_id, "Pilot plan")
+            plan = load_or_404(pilot_plans, plan_id, "Pilot plan")
             apply_pilot_fields(plan, request)
             pilot_plans.save(plan)
         return full_pilot_plan(plan)
@@ -683,7 +663,7 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
     @app.delete("/api/pilot-plans/{plan_id}")
     def delete_pilot_plan(plan_id: str):
         with storage_lock:
-            load_from(pilot_plans, plan_id, "Pilot plan")
+            load_or_404(pilot_plans, plan_id, "Pilot plan")
             delete_comments_on("pilot_plan", plan_id)
             pilot_plans.delete(plan_id)
         return {"deleted": plan_id}
@@ -822,14 +802,10 @@ def load_examples(benchmark_path):
 
 
 def main():
-    from src.pipeline.llm import DEFAULT_PROVIDER, LLM, PROVIDERS
+    from src.pipeline.llm import add_llm_arguments, llm_from_args
 
     parser = argparse.ArgumentParser(description="Run the consultant web UI")
-    parser.add_argument("--provider", choices=list(PROVIDERS), default=DEFAULT_PROVIDER)
-    parser.add_argument("--model")
-    parser.add_argument("--max-tokens", type=int, default=4096)
-    parser.add_argument("--reasoning-effort", choices=["low", "medium", "high", "none"], default="low",
-                        help="none leaves the setting out, for models that don't accept it")
+    add_llm_arguments(parser)
     parser.add_argument("--papers", default="data/papers_clean.parquet")
     parser.add_argument("--index-dir", default="data/index")
     parser.add_argument("--benchmark", default="evaluation/benchmark_queries.csv")
@@ -840,30 +816,17 @@ def main():
     parser.add_argument("--comments-dir", default="data/ui_comments")
     parser.add_argument("--market-scans-dir", default="data/ui_market_scans")
     parser.add_argument("--presentations-dir", default="data/ui_presentations")
-    parser.add_argument("--compress", action="store_true",
-                        help="shorten the retrieved passages before the summary call (src/pipeline/compress.py); "
-                             "off by default because it made answers slower in testing")
-    parser.add_argument("--context-budget", type=int, default=8000,
-                        help="estimated tokens of paper text in the summary prompt")
-    parser.add_argument("--compact-prompt", action="store_true",
-                        help="shorter summarization instructions with one example")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
     # Check the API key before the slow retriever startup
-    llm = LLM(provider=args.provider, model=args.model, max_tokens=args.max_tokens,
-              reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort)
+    llm = llm_from_args(args)
 
     print("Loading the retriever and embedding model...")
     from src.rag.lance_retriever import LanceCombinedRetriever
 
     retriever = LanceCombinedRetriever(papers_path=args.papers, index_dir=args.index_dir)
-
-    from src.pipeline.compress import CompressSettings, ContextCompressor
-
-    compressor = None if not args.compress else ContextCompressor(
-        retriever.embedder, CompressSettings(budget_tokens=args.context_budget))
 
     app = create_app(
         retriever,
@@ -875,8 +838,6 @@ def main():
         adaptations=AdaptationStore(args.adaptations_dir),
         pilot_plans=PilotPlanStore(args.pilot_plans_dir),
         comments=CommentStore(args.comments_dir),
-        compressor=compressor,
-        compact_prompt=args.compact_prompt,
         market_scans=MarketScanStore(args.market_scans_dir),
         edgar=edgar_from_env(),
         presentations=PresentationStore(args.presentations_dir),

@@ -224,3 +224,43 @@ class LLM:
 
 # Earlier name, kept so existing code and notebooks keep working
 GroqLLM = LLM
+
+
+def add_llm_arguments(parser):
+    """The LLM options, shared by the pipeline CLI and the web app so they stay the same."""
+    parser.add_argument(
+        "--provider",
+        choices=list(PROVIDERS),
+        default=DEFAULT_PROVIDER,
+        help="LLM service: groq (GROQ_API_KEY, default), "
+             "nvidia (NVIDIA_API_KEY, free key at build.nvidia.com) or gemini (GEMINI_API_KEY)"
+    )
+    parser.add_argument(
+        "--model",
+        help=", ".join(f"{name}: {settings['model']}" for name, settings in PROVIDERS.items())
+             + " by default"
+    )
+    parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=5,
+        help="times to wait and retry a rate limited request"
+    )
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=["low", "medium", "high", "none"],
+        default="low",
+        help="none leaves the setting out, for models that don't accept it"
+    )
+
+
+def llm_from_args(args):
+    """An LLM from the options add_llm_arguments added. Fails fast if the API key is missing."""
+    return LLM(
+        provider=args.provider,
+        model=args.model,
+        max_tokens=args.max_tokens,
+        reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort,
+        max_retries=args.max_retries
+    )

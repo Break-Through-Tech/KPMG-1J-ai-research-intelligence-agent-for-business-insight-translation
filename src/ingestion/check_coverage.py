@@ -6,12 +6,12 @@
 # max_papers only gets checked on what it actually processed (the rest is the next run's job)
 
 import argparse
-import re
 import sys
 from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
+from ..preprocessing.metadata import base_id
 from . import arxiv_api
 from .arxiv_api import ArxivUnavailable  # noqa: F401  (raised from here, imported by callers)
 
@@ -19,15 +19,11 @@ ATOM = arxiv_api.ATOM
 PAGE_SIZE = 2000        # largest page size the arXiv API supports
 
 
-def _base_id(arxiv_id: str) -> str:
-    return re.sub(r"v\d+$", "", arxiv_id)
-
-
 def arxiv_ids_in_window(category: str, start: datetime, end: datetime) -> set[str]:
     """base ids of every paper arXiv lists for the category with a submission time in [start, end]"""
     ids = set()
     for entries in arxiv_api.search_pages(arxiv_api.window_query(category, start, end), PAGE_SIZE):
-        ids.update(_base_id(e.findtext(f"{ATOM}id").rsplit("/", 1)[-1]) for e in entries)
+        ids.update(base_id(e.findtext(f"{ATOM}id").rsplit("/", 1)[-1]) for e in entries)
     return ids
 
 
@@ -35,7 +31,7 @@ def check_coverage(dataset_path: str, category: str, since: date, fetch_ids=None
     fetch_ids = fetch_ids or arxiv_ids_in_window
     df = pd.read_parquet(dataset_path, columns=["arxiv_id", "published", "ingestion_status"])
     df["published"] = pd.to_datetime(df["published"], utc=True)
-    df["base_id"] = df["arxiv_id"].map(_base_id)
+    df["base_id"] = df["arxiv_id"].map(base_id)
 
     start = datetime.combine(since, datetime.min.time(), tzinfo=timezone.utc)
     # stop just before the newest saved paper: everything older than it should be here
