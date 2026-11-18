@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import argparse
 import csv
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from src.preprocessing.metadata import base_id
 from src.rag.query_rewriter import rewrite_query
 
 
@@ -19,7 +19,7 @@ class RankedPaper:
     rank: int
     paper_id: str
     title: str
-    distance: float | None
+    score: float | None
 
 
 def normalize_arxiv_id(value: str) -> str:
@@ -27,7 +27,7 @@ def normalize_arxiv_id(value: str) -> str:
     value = value.removeprefix("arXiv:")
     value = value.replace("https://arxiv.org/abs/", "")
     value = value.replace("http://arxiv.org/abs/", "")
-    return re.sub(r"v\d+$", "", value)
+    return base_id(value)
 
 
 def parse_expected_ids(value: str) -> list[str]:
@@ -44,60 +44,23 @@ def load_benchmarks(path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def distinct_papers_from_chroma_result(
-    result: dict[str, Any],
-    top_papers: int = 5,
-) -> list[RankedPaper]:
-    metadatas = (result.get("metadatas") or [[]])[0]
-    distances = (result.get("distances") or [[]])[0]
-
-    papers: list[RankedPaper] = []
-    seen: set[str] = set()
-
-    # Chroma returns chunks, so keep only the first ranked chunk from each paper.
-    for idx, metadata in enumerate(metadatas):
-        metadata = metadata or {}
-        paper_id = str(metadata.get("paper_id", "")).strip()
-
-        if not paper_id:
-            continue
-
-        normalized = normalize_arxiv_id(paper_id)
-
-        if normalized in seen:
-            continue
-
-        seen.add(normalized)
-        distance = distances[idx] if idx < len(distances) else None
-
-        papers.append(
-            RankedPaper(
-                rank=len(papers) + 1,
-                paper_id=paper_id,
-                title=str(metadata.get("title", "")),
-                distance=float(distance) if distance is not None else None,
-            )
-        )
-
-        if len(papers) >= top_papers:
-            break
-
-    return papers
-
-
 def retrieve_top_papers(
     retriever: Any,
     query: str,
     top_papers: int = 5,
 ) -> list[RankedPaper]:
-    # Retrieve extra chunks so there are enough distinct papers for Top-5.
-    chunk_k = max(top_papers * 5, top_papers)
-    result = retriever.search(query, top_k=chunk_k)
+    # The Lance retrievers already return one result per paper, best first
+    results = retriever.search(query, top_k=top_papers)
 
-    return distinct_papers_from_chroma_result(
-        result,
-        top_papers=top_papers,
-    )
+    return [
+        RankedPaper(
+            rank=rank,
+            paper_id=str(paper["paper_id"]),
+            title=str(paper.get("title", "")),
+            score=paper.get("score"),
+        )
+        for rank, paper in enumerate(results, start=1)
+    ]
 
 
 def evaluate_hit(
@@ -218,11 +181,8 @@ def print_summary(rows: list[dict[str, Any]]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--db-dir", default="data/chroma_db")
-    parser.add_argument(
-        "--collection",
-        default="kpmg_research_collection",
-    )
+    parser.add_argument("--papers", default="data/papers_clean.parquet")
+    parser.add_argument("--index-dir", default="data/index")
     parser.add_argument(
         "--benchmark",
         type=Path,
@@ -237,11 +197,13 @@ def main() -> None:
     args = parser.parse_args()
 
     # Import only when running the benchmark so helper functions stay testable.
-    from src.rag.retriever import ChromaRetriever
+    from src.rag.lance_retriever import LanceCombinedRetriever
 
-    retriever = ChromaRetriever(
-        db_dir=args.db_dir,
-        collection_name=args.collection,
+    # Only the ranking is compared, so skip the extra passages the LLM would read
+    retriever = LanceCombinedRetriever(
+        papers_path=args.papers,
+        index_dir=args.index_dir,
+        passages=False,
     )
 
     run_benchmark(

@@ -1,6 +1,5 @@
 # Creates embedding vectors from the chunks produced by the chunking pipeline
 
-from sentence_transformers import SentenceTransformer
 import numpy as np
 
 
@@ -25,6 +24,9 @@ class TextEmbedder:
         )
 
         print(f"Loading embedding model: {model_name}")
+
+        # imported here so reading DEFAULT_MODEL (e.g. the chunking CLI) doesn't load torch
+        from sentence_transformers import SentenceTransformer
 
         self.model = SentenceTransformer(model_name)
 

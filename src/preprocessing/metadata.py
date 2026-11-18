@@ -8,6 +8,9 @@ from .normalize import normalize_abstract
 
 VERSION_RE = re.compile(r"v(\d+)$")
 
+# a new-style arXiv id with an optional version, e.g. 2609.38107 or 2609.38107v1
+ARXIV_ID = r"\d{4}\.\d{4,5}(?:v\d+)?"
+
 
 def split_version(arxiv_id: str) -> tuple[str, int]:
     """'2609.26780v2' -> ('2609.26780', 2), ids without a version count as v1"""
@@ -15,6 +18,11 @@ def split_version(arxiv_id: str) -> tuple[str, int]:
     if not match:
         return arxiv_id, 1
     return arxiv_id[:match.start()], int(match.group(1))
+
+
+def base_id(arxiv_id) -> str:
+    """'2609.26780v2' -> '2609.26780', so arXiv versions such as v1 and v2 count as the same paper"""
+    return split_version(str(arxiv_id).strip())[0]
 
 
 def _to_list(value):

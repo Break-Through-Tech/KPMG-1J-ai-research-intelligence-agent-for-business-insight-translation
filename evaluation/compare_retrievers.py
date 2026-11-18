@@ -1,9 +1,11 @@
 # Compare retrievers on the benchmark questions, without calling an LLM
 #
 # Methods:
-#   chroma-combined  Thania's CombinedRetriever on the local Chroma database (old baseline)
 #   lance            Grace's LanceDB hybrid chunk search, grouped into papers
 #   lance-combined   Thania's method (title/abstract + chunk search, RRF) on LanceDB
+#
+# The first comparison also ran Thania's original Chroma retriever ("chroma-combined");
+# its numbers are kept in evaluation/results, but the Chroma code has since been removed.
 #
 # Run from the project root:
 # python -m evaluation.compare_retrievers --papers data/papers_clean.parquet
@@ -15,7 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.rag.lance_retriever import base_id
+from src.preprocessing.metadata import base_id
 
 
 RESULTS_FOLDER = Path("evaluation/results")
@@ -63,18 +65,14 @@ def load_labels(path):
     }
 
 
-def build_retrievers(methods, papers_path, index_dir, chroma_dir):
+def build_retrievers(methods, papers_path, index_dir):
     # Imported here so each method only needs its own database
     retrievers = {}
 
     for method in methods:
         print(f"Loading {method}...")
 
-        if method == "chroma-combined":
-            from src.rag.combined_retriever import CombinedRetriever
-            retrievers[method] = CombinedRetriever(papers_path=papers_path, db_dir=chroma_dir)
-
-        elif method == "lance":
+        if method == "lance":
             from src.rag.lance_retriever import LanceRetriever
             # only the ranking is compared, so skip the extra passages the LLM would read
             retrievers[method] = LanceRetriever(papers_path=papers_path, index_dir=index_dir,
@@ -227,11 +225,10 @@ def main():
     parser = argparse.ArgumentParser(description="Compare retrievers on the benchmark questions")
     parser.add_argument("--papers", default="data/papers_clean.parquet")
     parser.add_argument("--index-dir", default="data/index")
-    parser.add_argument("--chroma-dir", default="data/chroma_db")
     parser.add_argument("--benchmark", default="evaluation/benchmark_queries.csv")
     parser.add_argument("--business", default="src/benchmark_questions.csv")
     parser.add_argument("--labels", default="evaluation/results/thania_relevance_labels.csv")
-    parser.add_argument("--methods", nargs="+", default=["chroma-combined", "lance", "lance-combined"])
+    parser.add_argument("--methods", nargs="+", default=["lance", "lance-combined"])
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--known-items", type=int, default=100,
                         help="number of papers for the title search test (0 to skip)")
@@ -241,7 +238,7 @@ def main():
     queries = load_queries(args.benchmark, args.business)
     labels = load_labels(args.labels)
 
-    retrievers = build_retrievers(args.methods, args.papers, args.index_dir, args.chroma_dir)
+    retrievers = build_retrievers(args.methods, args.papers, args.index_dir)
 
     print(f"Running {len(queries)} queries with {len(retrievers)} retrievers...")
     results = run_queries(retrievers, queries, labels, args.top_k)

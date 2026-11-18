@@ -2,30 +2,19 @@
 
 import re
 
-from src.translation.prompts import BUSINESS_SECTIONS
-
-MAX_BRIEF_WORDS = 200
+from src.translation.prompts import BUSINESS_SECTIONS, MAX_BRIEF_WORDS
+from src.translation.text_checks import headings, section_text
 
 EVIDENCE_PATTERN = re.compile(r"\b(High|Medium|Low)\b")
 
 
-def section_text(brief, heading):
-    """Text under one '## heading' of the brief, or '' if it is missing."""
-    match = re.search(
-        rf"^## {re.escape(heading)}\s*$(.*?)(?=^## |\Z)",
-        brief,
-        re.MULTILINE | re.DOTALL,
-    )
-    return match.group(1).strip() if match else ""
-
-
 def template_check(brief):
-    headings = [h.strip() for h in re.findall(r"^## (.+)$", brief, re.MULTILINE)]
+    found = headings(brief)
     words = len(brief.split())
 
     return {
-        "ok": headings == BUSINESS_SECTIONS and words < MAX_BRIEF_WORDS,
-        "headings_ok": headings == BUSINESS_SECTIONS,
+        "ok": found == BUSINESS_SECTIONS and words < MAX_BRIEF_WORDS,
+        "headings_ok": found == BUSINESS_SECTIONS,
         "words": words,
         "max_words": MAX_BRIEF_WORDS,
         "sections": len(BUSINESS_SECTIONS),

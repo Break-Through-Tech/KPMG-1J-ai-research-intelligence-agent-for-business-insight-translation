@@ -15,6 +15,13 @@ BUSINESS_SECTIONS = [
     "Sources",
 ]
 
+# The brief must stay under this many words (checked on the brief page, src/app/checks.py)
+MAX_BRIEF_WORDS = 200
+
+# "Bottom Line, ..., Caveat,\n    Sources": the section names as rule 13 of the
+# system prompt lists them, wrapped like the rest of that prompt
+_SECTION_NAMES = ", ".join(BUSINESS_SECTIONS[:-1]) + ",\n    " + BUSINESS_SECTIONS[-1]
+
 # Who the brief is written for, and what they care about most
 AUDIENCES = {
     "executive": (
@@ -37,7 +44,7 @@ DEFAULT_AUDIENCE = "executive"
 # The accuracy rules (evidence gaps, keeping each result's meaning, separate
 # resource measures, keeping warnings) come from Thania's prompt testing in
 # PR #40 (evaluation/prompt_testing), adapted to the gold-standard format.
-BUSINESS_SYSTEM_PROMPT = """
+BUSINESS_SYSTEM_PROMPT = f"""
 You are an advisor who translates AI research into business insight.
 
 You will receive a business question, an audience, and a research summary
@@ -95,11 +102,10 @@ AUDIENCE AND FORMAT
     decisions and business implications, and leave out statistics that
     do not help answer the question.
 13. Use exactly these six sections, in this order, as Markdown headings:
-    Bottom Line, Why It Matters, What To Do, Evidence Strength, Caveat,
-    Sources.
+    {_SECTION_NAMES}.
 14. Keep it short: the Bottom Line is one or two sentences, every other
     section has at most 3 bullet points, and the whole brief is under
-    200 words. Pick the most useful findings rather than squeezing in
+    {MAX_BRIEF_WORDS} words. Pick the most useful findings rather than squeezing in
     every one.
 15. Under Sources, list the paper IDs cited in the brief, separated by
     commas, and no others.
@@ -311,15 +317,12 @@ def build_business_prompt(query, summary, audience=DEFAULT_AUDIENCE, client=None
     prompt += "Business Question:\n" + query + "\n\n"
     prompt += "Research Summary:\n" + summary + "\n\n"
 
-    prompt += """
+    headings = "\n".join(f"## {section}" for section in BUSINESS_SECTIONS)
+
+    prompt += f"""
 Write the brief with exactly these six Markdown headings:
 
-## Bottom Line
-## Why It Matters
-## What To Do
-## Evidence Strength
-## Caveat
-## Sources
+{headings}
 
 IMPORTANT CHECKS:
 - Use ONLY the new research summary, never the examples' findings.
@@ -330,7 +333,7 @@ IMPORTANT CHECKS:
   not answer the question.
 - Keep memory, tokens, runtime and cost separate.
 - Under Sources, list only the paper IDs cited above.
-- Keep the brief under 200 words.
+- Keep the brief under {MAX_BRIEF_WORDS} words.
 """
 
     return prompt

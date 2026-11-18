@@ -22,7 +22,7 @@ To get the newest papers, run `./scripts/get_latest_data.sh` and restart the app
 
 Instead of exporting, you can put the key in a `.env` file at the repo root (`NVIDIA_API_KEY=...`, git-ignored); the app reads it at startup. For the Market tab, also set `SEC_USER_AGENT` (see [Market scan](#market-scan)).
 
-Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`, `--projects-dir`, `--adaptations-dir`, `--pilot-plans-dir`, `--comments-dir`, `--market-scans-dir`, `--presentations-dir`, `--compress` and `--context-budget` (shorten the paper text sent to the summary step; off by default, see `src/pipeline/README.md`), `--compact-prompt` (shorter summary instructions, not recommended yet).
+Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--max-tokens`, `--max-retries`, `--reasoning-effort` (`none` for models that reject it); these LLM options are the same as the pipeline CLI's. Also `--port`, `--papers`, `--index-dir`, `--briefs-dir`, `--projects-dir`, `--adaptations-dir`, `--pilot-plans-dir`, `--comments-dir`, `--market-scans-dir`, `--presentations-dir`.
 
 ## What each button costs
 

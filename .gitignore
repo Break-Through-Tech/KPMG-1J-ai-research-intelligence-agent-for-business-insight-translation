@@ -25,7 +25,7 @@ data/index.previous/
 data/.download/
 .venv/
 
-# Local Chroma vector database, kept only as the retriever comparison baseline
+# Old local Chroma vector databases (the Chroma retriever has been removed)
 data/chroma_db/
 data/release/
 

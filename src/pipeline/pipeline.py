@@ -1,5 +1,5 @@
 # End-to-end pipeline:
-# user query -> CombinedRetriever (top papers + evidence) -> summarization prompt -> LLM -> cited answer
+# user query -> LanceCombinedRetriever (top papers + evidence) -> summarization prompt -> LLM -> cited answer
 #            -> business translation prompt (src/translation) -> LLM -> business brief
 
 import json
@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.preprocessing.metadata import ARXIV_ID, base_id
 from src.summarization.prompts import (
     SUMMARIZATION_SYSTEM_PROMPT,
-    SUMMARIZATION_SYSTEM_PROMPT_COMPACT,
     build_summarization_prompt
 )
 from src.translation.prompts import (
@@ -25,32 +25,17 @@ from src.translation.prompts import (
 
 
 # Matches citations like [2609.38107v1] or [2609.38107]
-CITATION_PATTERN = re.compile(r"\b(\d{4}\.\d{4,5}(?:v\d+)?)\b")
-
-# Put above the papers when the passages were shortened (src/pipeline/compress.py)
-EXCERPT_NOTE = (
-    "Note: passages are excerpts. [...] marks text that was left out; "
-    "do not connect statements across it."
-)
+CITATION_PATTERN = re.compile(rf"\b({ARXIV_ID})\b")
 
 NO_RESULTS_MESSAGE = (
     "No relevant research was found in the indexed papers for this question."
 )
 
 
-def base_id(paper_id):
+def format_retrieved_content(papers):
     """
-    Treat arXiv versions such as v1 and v2 as the same paper.
-    """
-
-    return re.sub(r"v\d+$", "", str(paper_id).strip())
-
-
-def format_retrieved_content(papers, excerpts=False):
-    """
-    Turn CombinedRetriever results into the text block the summarization
-    prompt expects. Each paper is labelled with its ID so the LLM can cite it.
-    excerpts: the passages were shortened by the compressor, so say what [...] means
+    Turn retriever results into the text block the summarization prompt
+    expects. Each paper is labelled with its ID so the LLM can cite it.
     """
 
     blocks = []
@@ -63,7 +48,7 @@ def format_retrieved_content(papers, excerpts=False):
             f"Abstract: {paper.get('abstract', '')}"
         )
 
-        # the compressor (compress.py) leaves this empty when the budget ran out
+        # a paper without a supporting chunk gets its title and abstract only
         if paper.get("best_chunk_text"):
             block += (
                 f"\nSection: {paper.get('best_chunk_section', '')}\n"
@@ -84,12 +69,7 @@ def format_retrieved_content(papers, excerpts=False):
 
         blocks.append(block)
 
-    content = "\n\n".join(blocks)
-
-    if excerpts:
-        content = EXCERPT_NOTE + "\n\n" + content
-
-    return content
+    return "\n\n".join(blocks)
 
 
 def check_citations(summary, papers):
@@ -200,22 +180,18 @@ def answer_followup(query, summary, brief, papers, followup, llm,
 
 
 def answer_query(query, retriever, llm, top_k=5, translate=True,
-                 audience=DEFAULT_AUDIENCE, filters=None, client=None,
-                 compressor=None, compact_prompt=False):
+                 audience=DEFAULT_AUDIENCE, filters=None, client=None):
     """
     Run one question through retrieval, summarization and (unless
     translate=False) business translation.
 
     retriever: anything with search(query, top_k) returning paper dicts
-               (see src/rag/README_combined_retriever.md)
+               (see src/rag/README.md)
     llm:       anything with generate(system_prompt, user_prompt)
     filters:   optional {"since", "until", "categories"} for retrievers that
                support them (src/rag/lance_retriever.py)
     client:    optional client context for the brief step only; retrieval
                and the research summary never see it
-    compressor: optional ContextCompressor (src/pipeline/compress.py) that
-               shortens the paper text before the summary call
-    compact_prompt: use the shorter summarization instructions (one example)
     """
 
     if not isinstance(query, str) or not query.strip():
@@ -237,17 +213,10 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
             "business_insight": None
         }
 
-    context = None
-    if compressor is not None:
-        papers, context = compressor.compress(query, papers)
+    retrieved_content = format_retrieved_content(papers)
+    prompt = build_summarization_prompt(query, retrieved_content)
 
-    retrieved_content = format_retrieved_content(papers, excerpts=compressor is not None)
-    prompt = build_summarization_prompt(query, retrieved_content, compact=compact_prompt)
-
-    summary = llm.generate(
-        SUMMARIZATION_SYSTEM_PROMPT_COMPACT if compact_prompt else SUMMARIZATION_SYSTEM_PROMPT,
-        prompt
-    )
+    summary = llm.generate(SUMMARIZATION_SYSTEM_PROMPT, prompt)
 
     result = {
         "query": query,
@@ -257,8 +226,6 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
         # (read before step 2, which overwrites last_finish_reason)
         "truncated": getattr(llm, "last_finish_reason", None) == "length",
         "citation_check": check_citations(summary, papers),
-        # estimated tokens of paper text before and after compression, and what was left out
-        "context": context,
         "business_insight": None
     }
 
@@ -272,7 +239,7 @@ def answer_query(query, retriever, llm, top_k=5, translate=True,
 
 def run_benchmark(benchmark_path, output_path, retriever, llm, top_k=5,
                   delay=0, sleep=time.sleep, translate=True,
-                  audience=DEFAULT_AUDIENCE, compressor=None, compact_prompt=False):
+                  audience=DEFAULT_AUDIENCE):
     """
     Answer every benchmark query and write one JSON line per query.
     Queries already in the output file are skipped, so a failed run
@@ -307,8 +274,7 @@ def run_benchmark(benchmark_path, output_path, retriever, llm, top_k=5,
             print(f"Answering {row['query_id']}: {row['query']}")
 
             result = answer_query(row["query"], retriever, llm, top_k=top_k,
-                                  translate=translate, audience=audience,
-                                  compressor=compressor, compact_prompt=compact_prompt)
+                                  translate=translate, audience=audience)
 
             record = {
                 "query_id": row["query_id"],

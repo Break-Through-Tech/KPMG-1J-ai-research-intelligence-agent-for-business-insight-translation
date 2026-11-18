@@ -34,7 +34,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: hf-models-bge-small-en-v1.5
+          # changes when embedder.py (which names DEFAULT_MODEL) changes, so a new model is downloaded
+          key: hf-models-${{ hashFiles('src/vectorizing/embedder.py') }}
 
       - name: Run tests
         run: python -m pytest tests/ -q

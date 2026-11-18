@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 PYTHON="${PYTHON:-.venv/bin/python}"
 DATA_DIR="${DATA_DIR:-data}"
 CATEGORY="${CATEGORY:-cat:cs.AI}"
-MAX_PAPERS="${MAX_PAPERS:-1000}"      # new papers per run (~13.5s each, so 1000 is ~3.75h, under the workflow's 4.5h step limit)
+MAX_PAPERS="${MAX_PAPERS:-700}"       # new papers per run (~13.5s each, so 700 is ~2.6h, under the workflow's 3h ingest step limit)
 BATCH_SIZE="${BATCH_SIZE:-100}"       # save progress every this many papers
 MAX_RESULTS="${MAX_RESULTS:-20000}"   # safety cap on metadata records fetched from the arXiv API
 OVERLAP_DAYS="${OVERLAP_DAYS:-2}"     # re-check a couple of days back for late announcements, duplicates are skipped
@@ -29,6 +29,7 @@ RETRY_DAYS="${RETRY_DAYS:-14}"        # retry failed PDFs from up to this many d
 FIRST_RUN_DAYS="${FIRST_RUN_DAYS:-7}" # how far back to go when there is no dataset yet
 CHECK_STRICT="${CHECK_STRICT:-false}" # true = fail (exit 1) if the coverage check finds missing papers
 RUN_CHECK="${RUN_CHECK:-true}"        # the GitHub workflow runs the check itself, after publishing
+RUN_PREPROCESS="${RUN_PREPROCESS:-true}" # the GitHub workflow preprocesses in its own step, which also runs after a timeout
 INGEST_ATTEMPTS="${INGEST_ATTEMPTS:-3}" # retry ingestion this many times if it fails (e.g. the arXiv API is down)
 RETRY_WAIT="${RETRY_WAIT:-300}"       # seconds to wait between attempts
 
@@ -106,7 +107,9 @@ if [ "$BACKLOG" -gt 0 ]; then
     echo "backlog: $BACKLOG papers left for the next run"
 fi
 
-"$PYTHON" -m src.preprocessing.cli --input "$DATASET" --output "$CLEAN" --report "$REPORT"
+if [ "$RUN_PREPROCESS" = "true" ]; then
+    "$PYTHON" -m src.preprocessing.cli --input "$DATASET" --output "$CLEAN" --report "$REPORT"
+fi
 
 if $DELETE_PDFS; then
     # the text is already saved in the parquet, so PDFs of completely ingested papers aren't needed anymore
@@ -120,7 +123,9 @@ for p in removed:
 print(f'deleted {len(removed)} ingested PDFs')"
 fi
 
-if $SNAPSHOT; then
+if $SNAPSHOT && [ "$RUN_PREPROCESS" != "true" ]; then
+    echo "--snapshot needs a fresh clean dataset, so it was skipped (RUN_PREPROCESS=false)" >&2
+elif $SNAPSHOT; then
     mkdir -p "$DATA_DIR/snapshots"
     SNAPSHOT_PATH="$DATA_DIR/snapshots/papers_clean_$(date +%Y-%m-%d).parquet"
     cp "$CLEAN" "$SNAPSHOT_PATH"

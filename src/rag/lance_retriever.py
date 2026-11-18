@@ -4,11 +4,10 @@
 # LanceCombinedRetriever:  Thania's CombinedRetriever method (title/abstract search
 #                          + chunk search, merged with RRF) on the LanceDB index
 #
-# Both return the same paper dicts as CombinedRetriever.search, so the
-# pipeline (src/pipeline) works with either one unchanged. Each paper also
-# carries "passages": its most relevant results passage and its limitations
-# (or conclusion) passage, so the summary can report findings and caveats
-# rather than only what the introduction says.
+# Both return the same paper dicts, so the pipeline (src/pipeline) works with
+# either one unchanged. Each paper also carries "passages": its most relevant
+# results passage and its limitations (or conclusion) passage, so the summary
+# can report findings and caveats rather than only what the introduction says.
 
 import re
 
@@ -16,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-from src.indexing.store import load_paper_vectors, open_index, paper_text, search as index_search
+from src.indexing.store import load_paper_vectors, open_index, paper_text, search as index_search, sql_strings
 from src.preprocessing.metadata import split_version
 from src.vectorizing.embedder import TextEmbedder
 
@@ -77,26 +76,16 @@ def filter_clause(filters):
     if filters["until"]:
         parts.append(f"published_date <= '{filters['until']}'")
     if filters["categories"]:
-        parts.append(f"primary_category IN ({_quoted(filters['categories'])})")
+        parts.append(f"primary_category IN ({sql_strings(filters['categories'])})")
 
     return " AND ".join(parts)
-
-
-def base_id(paper_id):
-    """Treat arXiv versions such as v1 and v2 as the same paper."""
-    return re.sub(r"v\d+$", "", str(paper_id).strip())
-
-
-def _quoted(values):
-    """SQL string literals for a where clause, with quotes escaped"""
-    return ", ".join("'" + str(v).replace("'", "''") + "'" for v in values)
 
 
 def rrf_merge(rankings, k=60):
     """
     Reciprocal rank fusion: each paper gets 1 / (k + rank) points from every
-    ranking it appears in. Same formula and tie-break as
-    CombinedRetriever._combine_rankings.
+    ranking it appears in; ties go to the lower paper ID. Same formula as
+    Thania's original (Chroma) CombinedRetriever.
     """
     scores = {}
 
@@ -115,8 +104,6 @@ def _evidence(row):
         "chunk_id": row["chunk_id"],
         "chunk_paper_id": f"{row['paper_id']}v{row['version']}",
         "best_chunk_section": row.get("section") or "",
-        # lets the pipeline's compressor tell when the best chunk is already a results chunk
-        "best_chunk_section_type": row.get("section_type") or "",
         "best_chunk_text": row["text"],
         # hybrid search returns a relevance score (higher is better),
         # vector-only search returns a distance (lower is better)
@@ -172,14 +159,18 @@ class LanceRetriever:
             .to_pandas()["paper_id"]
         )
 
-        # dates and categories are only needed for filters, and older files may not have them
+        # papers_clean stores each paper's base id and version (src/preprocessing/metadata.py);
+        # dates and categories are only needed for filters. Older files may lack any of these
         available = set(pq.read_schema(papers_path).names)
         columns = ["arxiv_id", "title", "abstract_clean"] + [
-            c for c in ("published_date", "primary_category") if c in available
+            c for c in ("base_id", "version", "published_date", "primary_category") if c in available
         ]
 
         papers = pd.read_parquet(papers_path, columns=columns)
-        papers["base_id"] = papers["arxiv_id"].map(base_id)
+        if "base_id" not in papers or "version" not in papers:
+            ids = papers["arxiv_id"].astype(str).map(split_version)
+            papers["base_id"] = ids.str[0]
+            papers["version"] = ids.str[1]
 
         missing = indexed - set(papers["base_id"])
 
@@ -190,8 +181,9 @@ class LanceRetriever:
             )
 
         papers = papers[papers["base_id"].isin(indexed)].copy()
-        # keep the newest version if a release lists a paper twice
-        papers = papers.sort_values("arxiv_id").drop_duplicates("base_id", keep="last")
+        # keep the newest version if a file lists a paper twice (papers_clean never does).
+        # sorted by version number, so v10 counts as newer than v9
+        papers = papers.sort_values("version", kind="stable").drop_duplicates("base_id", keep="last")
 
         papers["title"] = papers["title"].fillna("").astype(str)
         papers["abstract_clean"] = papers["abstract_clean"].fillna("").astype(str)
@@ -230,11 +222,11 @@ class LanceRetriever:
 
     def _search_paper(self, paper_id, query, vector, types=None, exclude=None):
         """Best chunk within one paper, optionally only from some section types."""
-        where = f"paper_id = {_quoted([paper_id])}"
+        where = f"paper_id = {sql_strings([paper_id])}"
         if types:
-            where += f" AND section_type IN ({_quoted(types)})"
+            where += f" AND section_type IN ({sql_strings(types)})"
         if exclude:
-            where += f" AND section_type NOT IN ({_quoted(exclude)})"
+            where += f" AND section_type NOT IN ({sql_strings(exclude)})"
 
         rows = self._search_chunks(query, vector, 1, where=where)
 
@@ -369,7 +361,7 @@ class LanceCombinedRetriever(LanceRetriever):
     ):
         super().__init__(papers_path, index_dir, hybrid, embedder, passages)
 
-        # Same settings as CombinedRetriever and Thania's benchmark
+        # Same settings as Thania's original CombinedRetriever and her benchmark
         self.paper_candidates = 30
         self.rrf_constant = 60
 
@@ -383,7 +375,7 @@ class LanceCombinedRetriever(LanceRetriever):
         embedded here, so an index built before paper vectors existed still works.
         """
         stored = load_paper_vectors(index_dir)
-        versions = [split_version(str(arxiv_id))[1] for arxiv_id in self.papers["arxiv_id"]]
+        versions = self.papers["version"].astype(int).tolist()
 
         vectors = np.zeros(
             (len(self.paper_ids), self.embedder.model.get_embedding_dimension()),

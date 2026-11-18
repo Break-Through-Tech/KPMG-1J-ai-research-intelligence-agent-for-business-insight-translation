@@ -90,9 +90,13 @@ def papers_to_index(table, chunks) -> set[str]:
     have = indexed.reindex(latest.index)
     return set(latest.index[have.isna() | (latest>have)])
 
+def sql_strings(values) -> str:
+    """values as SQL string literals for a LanceDB where clause, with quotes escaped"""
+    return ", ".join("'" + str(v).replace("'", "''") + "'" for v in values)
+
+
 def _in_list(column, values) -> str:
-    quoted = ", ".join("'" + str(v).replace("'", "''") + "'" for v in values)
-    return f"{column} IN ({quoted})"
+    return f"{column} IN ({sql_strings(values)})"
 
 
 def _add_papers(table, chunks, papers, embedder) -> int:

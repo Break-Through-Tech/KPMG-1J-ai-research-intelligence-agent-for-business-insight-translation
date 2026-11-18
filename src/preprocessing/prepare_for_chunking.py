@@ -26,9 +26,8 @@ Usage:
 import json
 import os
 
-# same as EXCLUDED_FROM_BODY in src/preprocessing/sections.py
-EXCLUDED_FROM_BODY = {"front_matter", "acknowledgments", "back_matter",
-                      "references", "appendix"}
+# the same sections body_text leaves out
+from .sections import EXCLUDED_FROM_BODY
 
 
 def est_tokens(text):

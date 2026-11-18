@@ -20,7 +20,8 @@ Exactly four sections, with a paper ID cited for every factual claim:
 | `SUMMARIZATION_SYSTEM_PROMPT` | The rules: use only the retrieved content, never invent findings or citations, cite only retrieved papers, copy model names and numbers exactly (Gemini and Gemma are different models), and only list limitations the paper states |
 | `FEW_SHOT_EXAMPLES` | Two real arXiv papers with a question, the source text and a model summary. They teach the format; the prompt says never to reuse their findings. |
 | `build_summarization_prompt(query, retrieved_chunks)` | Builds the full prompt: the two examples, then the question and the retrieved paper text, then a short checklist of accuracy rules |
-| `SUMMARIZATION_SYSTEM_PROMPT_COMPACT` | A shorter version with one example (`compact=True`), about 750 instead of 1,430 tokens. Off by default; see the comparison in `src/pipeline/README.md`. |
+
+A shorter version with one example was tried and removed: it was slower and misstated a number (see `src/pipeline/README.md`).
 
 The retrieved paper text comes from `format_retrieved_content` in `src/pipeline/pipeline.py`: each paper's ID, title, abstract, best matching passage, and its results and limitations passages.
 

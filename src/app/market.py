@@ -33,17 +33,14 @@ from src.market.scan import (
 )
 from src.translation.market_prompts import MARKET_SCAN_SYSTEM_PROMPT, build_market_scan_prompt
 
+from .common import StatusRequest, load_or_404
+
 
 class MarketScanRequest(BaseModel):
     phrases: list[str]
     industry: str = DEFAULT_INDUSTRY
     lens: str = DEFAULT_LENS
     window_days: int = DEFAULT_WINDOW
-
-
-class MarketStatusRequest(BaseModel):
-    status: str
-    note: str = ""
 
 
 def add_market_routes(app, load, run_llm, llm, scans, edgar, projects, now,
@@ -58,10 +55,7 @@ def add_market_routes(app, load, run_llm, llm, scans, edgar, projects, now,
     """
 
     def load_scan(scan_id):
-        try:
-            return scans.load(scan_id)
-        except KeyError:
-            raise HTTPException(404, "Market scan not found")
+        return load_or_404(scans, scan_id, "Market scan")
 
     @app.get("/api/market/options")
     def market_options():
@@ -146,10 +140,7 @@ def add_market_routes(app, load, run_llm, llm, scans, edgar, projects, now,
 
     @app.get("/api/market-scans")
     def project_market_scans(project_id: str):
-        try:
-            project = projects.load(project_id)
-        except KeyError:
-            raise HTTPException(404, "Project not found")
+        project = load_or_404(projects, project_id, "Project")
         return scans.list(brief_ids=project.get("brief_ids", []))
 
     @app.get("/api/market-scans/{scan_id}")
@@ -157,7 +148,7 @@ def add_market_routes(app, load, run_llm, llm, scans, edgar, projects, now,
         return load_scan(scan_id)
 
     @app.post("/api/market-scans/{scan_id}/status")
-    def market_scan_status(scan_id: str, request: MarketStatusRequest):
+    def market_scan_status(scan_id: str, request: StatusRequest):
         if request.status not in statuses:
             raise HTTPException(400, f"Unknown status {request.status!r}")
         scan = load_scan(scan_id)

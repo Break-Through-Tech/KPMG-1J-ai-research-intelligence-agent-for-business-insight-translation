@@ -10,6 +10,7 @@
 import html
 import os
 import re
+import threading
 import time
 from datetime import date
 
@@ -93,20 +94,24 @@ class EdgarClient:
 
         self.session = session
         self.headers = {"User-Agent": user_agent.strip(), "Accept-Encoding": "gzip, deflate"}
-        # SEC allows 10 requests a second; stay under it
+        # SEC allows 10 requests a second; stay under it, across every thread
+        # using this client (a scan runs requests in parallel, and the app shares one client)
         self.min_interval = min_interval
         self.max_bytes = max_bytes
         self.timeout = timeout
         self.sleep = sleep
         self.clock = clock
-        self._last = None
+        self._lock = threading.Lock()
+        self._next = None   # earliest time the next request may start
 
     def _wait(self):
-        if self._last is not None:
-            gap = self.clock() - self._last
-            if gap < self.min_interval:
-                self.sleep(self.min_interval - gap)
-        self._last = self.clock()
+        """Start requests at least min_interval apart: each caller books the next free slot."""
+        with self._lock:
+            now = self.clock()
+            start = now if self._next is None else max(now, self._next)
+            self._next = start + self.min_interval
+        if start > now:
+            self.sleep(start - now)
 
     def _get(self, url, params=None, stream=False):
         self._wait()

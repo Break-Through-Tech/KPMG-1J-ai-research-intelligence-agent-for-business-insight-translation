@@ -10,17 +10,12 @@
 #   lance-combined  title/abstract search + chunk search merged with RRF (default)
 #   lance           hybrid chunk search only, grouped into papers
 #
-# --compress shortens the retrieved passages before the summary call
-# (src/pipeline/compress.py). Off by default: in testing it saved 4% of the
-# prompt but the model reasoned longer, so answers were slower.
-#
 # Each answer also gets a business brief (src/translation) unless
 # --no-translate is given; --audience picks executive, risk or technical.
 
 import argparse
 
-from .compress import CompressSettings, ContextCompressor
-from .llm import DEFAULT_PROVIDER, LLM, PROVIDERS
+from .llm import add_llm_arguments, llm_from_args
 from .pipeline import answer_query, run_benchmark
 from src.translation.prompts import AUDIENCES, DEFAULT_AUDIENCE
 
@@ -105,44 +100,10 @@ def main():
     )
 
     parser.add_argument(
-        "--provider",
-        choices=list(PROVIDERS),
-        default=DEFAULT_PROVIDER,
-        help="LLM service: groq (GROQ_API_KEY, default), "
-             "nvidia (NVIDIA_API_KEY, free key at build.nvidia.com) or gemini (GEMINI_API_KEY)"
-    )
-
-    parser.add_argument(
-        "--model",
-        help=", ".join(f"{name}: {settings['model']}" for name, settings in PROVIDERS.items())
-             + " by default"
-    )
-
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=4096
-    )
-
-    parser.add_argument(
-        "--max-retries",
-        type=int,
-        default=5,
-        help="times to wait and retry a rate limited request"
-    )
-
-    parser.add_argument(
         "--delay",
         type=float,
         default=0,
         help="seconds to pause between benchmark questions"
-    )
-
-    parser.add_argument(
-        "--reasoning-effort",
-        choices=["low", "medium", "high", "none"],
-        default="low",
-        help="none leaves the setting out, for models that don't accept it"
     )
 
     parser.add_argument(
@@ -158,25 +119,7 @@ def main():
         help="who the business brief is written for"
     )
 
-    parser.add_argument(
-        "--compress",
-        action="store_true",
-        help="shorten the retrieved passages before the summary call (src/pipeline/compress.py); "
-             "off by default because it made answers slower in testing"
-    )
-
-    parser.add_argument(
-        "--context-budget",
-        type=int,
-        default=CompressSettings.budget_tokens,
-        help="estimated tokens of paper text in the summary prompt"
-    )
-
-    parser.add_argument(
-        "--compact-prompt",
-        action="store_true",
-        help="shorter summarization instructions with one example"
-    )
+    add_llm_arguments(parser)
 
     args = parser.parse_args()
 
@@ -184,13 +127,7 @@ def main():
         parser.error("give a question or --benchmark")
 
     # Check the API key before the slow retriever startup
-    llm = LLM(
-        provider=args.provider,
-        model=args.model,
-        max_tokens=args.max_tokens,
-        reasoning_effort=None if args.reasoning_effort == "none" else args.reasoning_effort,
-        max_retries=args.max_retries
-    )
+    llm = llm_from_args(args)
 
     # Imported here because it needs lancedb and loads the embedding model
     from src.rag.lance_retriever import LanceCombinedRetriever, LanceRetriever
@@ -205,10 +142,6 @@ def main():
         index_dir=args.index_dir
     )
 
-    compressor = None if not args.compress else ContextCompressor(
-        retriever.embedder, CompressSettings(budget_tokens=args.context_budget)
-    )
-
     if args.benchmark:
         run_benchmark(
             args.benchmark,
@@ -218,9 +151,7 @@ def main():
             top_k=args.top_k,
             delay=args.delay,
             translate=not args.no_translate,
-            audience=args.audience,
-            compressor=compressor,
-            compact_prompt=args.compact_prompt
+            audience=args.audience
         )
     else:
         print_answer(answer_query(
@@ -229,9 +160,7 @@ def main():
             llm,
             top_k=args.top_k,
             translate=not args.no_translate,
-            audience=args.audience,
-            compressor=compressor,
-            compact_prompt=args.compact_prompt
+            audience=args.audience
         ))
 
 

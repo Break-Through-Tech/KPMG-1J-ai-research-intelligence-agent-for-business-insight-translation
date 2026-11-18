@@ -21,10 +21,10 @@ import threading
 from fastapi import HTTPException, Response
 from pydantic import BaseModel
 
-from src.market.scan import _numbers
+from src.pipeline.pipeline import CITATION_PATTERN, check_citations
+from src.preprocessing.metadata import base_id
+from src.translation.text_checks import numbers_in
 
-from .present_pptx import build_pptx
-from src.pipeline.pipeline import CITATION_PATTERN, base_id, check_citations
 from src.translation.present_prompts import (
     AUDIENCE_LABELS,
     DEFAULT_LENGTH,
@@ -39,6 +39,9 @@ from src.translation.present_prompts import (
     deck_text,
     parse_deck,
 )
+
+from .common import load_or_404
+from .present_pptx import build_pptx
 
 # How far the slides' minutes may add up from the talk length before it's flagged
 MINUTES_TOLERANCE = 0.25
@@ -136,10 +139,10 @@ def check_deck(deck, record, extras_text, minutes):
         " ".join(s.get("title", "") for s in record.get("sources", [])),
         extras_text,
     ])
-    known = _numbers(source_text)
+    known = numbers_in(source_text)
     allowed = {str(minutes), str(len(slides))}
     ungrounded = sorted(
-        n for n in _numbers(CITATION_PATTERN.sub("", text))
+        n for n in numbers_in(CITATION_PATTERN.sub("", text))
         if n not in known and n not in allowed
     )
 
@@ -188,16 +191,11 @@ def add_present_routes(app, load, run_llm, llm, presentations, adaptations, pilo
     lock = threading.Lock()
 
     def load_deck(deck_id):
-        try:
-            return presentations.load(deck_id)
-        except KeyError:
-            raise HTTPException(404, "Presentation not found")
+        return load_or_404(presentations, deck_id, "Presentation")
 
     def load_extra(kind_store, record_id, label, brief_id):
-        try:
-            item = kind_store.load(record_id)
-        except KeyError:
-            raise HTTPException(400, f"{label} not found")
+        # 400, not 404: the brief exists, the material named in the request doesn't
+        item = load_or_404(kind_store, record_id, label, status_code=400)
         if item.get("brief_id") != brief_id:
             raise HTTPException(400, f"That {label.lower()} belongs to a different brief.")
         return item

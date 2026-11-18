@@ -148,7 +148,7 @@ EDA notebooks are in `notebooks/` (see `notebooks/README_eda_comparison.md`).
 
 **Prompts.** Two-step prompting: a few-shot research summary that may only use the retrieved papers (`src/summarization`), then a business brief that may only use that summary (`src/translation`).
 
-**Token usage.** An optional compressor (`src/pipeline/compress.py`, `--compress`) shortens the paper text. It cut the input by about 4–7% without accuracy problems, but answers got longer and slower, so it is off by default (see `src/pipeline/README.md`).
+**Token usage.** We tried a compressor that shortened the paper text and shorter summary instructions. Both made answers slower without saving tokens overall, and the shorter instructions misstated a number, so both were removed (see `src/pipeline/README.md`).
 
 ---
 
@@ -180,7 +180,7 @@ See `evaluation/README.md` for every result file.
 | `src/rag` | Search: retrievers and the query rewriter |
 | `src/summarization` | Research summary prompt |
 | `src/translation` | Business brief, follow-up, industry, POC and market prompts |
-| `src/pipeline` | Runs search → summary → brief, plus the compressor and LLM client |
+| `src/pipeline` | Runs search → summary → brief, plus the LLM client |
 | `src/market` | SEC EDGAR client and market scan logic |
 | `src/app` | The consultant web app and saved data |
 | `src/evaluation` | Gold-standard briefs and the retrieval benchmark script |
