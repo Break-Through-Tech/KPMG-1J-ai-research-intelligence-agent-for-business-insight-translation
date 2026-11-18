@@ -15,8 +15,8 @@ name: Update arXiv corpus
 on:
   schedule:
     # 12:00 AM Eastern on Mon/Wed/Fri. GitHub cron is in UTC:
-    # "0 4" while daylight saving time is on (until Nov 1 2026), change to "0 5" after DST ends
-    - cron: "0 4 * * 1,3,5"
+    # "0 4" while daylight saving time is on, "0 5" after DST ends (Nov 1 2026)
+    - cron: "0 5 * * 1,3,5"
   workflow_dispatch:   # adds a "Run workflow" button on the Actions tab
     inputs:
       max_papers:
@@ -30,8 +30,8 @@ on:
         type: boolean
         default: false
       index_minutes:
-        description: "Minutes to spend embedding papers. Keep 90 for a normal run; up to 240 with skip ingest"
-        default: "90"
+        description: "Minutes to spend embedding paper chunks. Keep 60 for a normal run; up to 200 with skip ingest"
+        default: "60"
 
 permissions:
   contents: write      # needed to create releases, uses GitHub's built-in token so no secrets are required
@@ -110,7 +110,7 @@ jobs:
       - name: Chunk and index new papers
         # only papers the index doesn't have yet (new papers, the index backlog and newer versions)
         # are chunked and embedded; everything already indexed is reused as is.
-        # embedding runs on CPU (~800 papers an hour), so it stops after index_minutes (90 by default) and
+        # embedding runs on CPU (~650 papers an hour), so it stops after index_minutes (60 by default) and
         # saves what it has; the leftover papers (backlog_papers in the manifest) are picked up by the next run.
         # runs even when no papers were added, so a backlog keeps shrinking.
         # a manual run with skip_ingest has the whole job's time, so it can take a much longer limit.
@@ -124,7 +124,11 @@ jobs:
           python -m src.preprocessing.prepare_for_chunking --skip-indexed data/index
           python -m src.chunking.cli
           # also stores each indexed paper's title/abstract vector, which the retriever ranks papers by
-          python -m src.indexing.cli --max-minutes "${{ inputs.index_minutes || '90' }}" | tee index.log
+          # the limit only covers chunk embedding: it can overrun by one 200-paper batch (~18 min), and
+          # title/abstract vectors come after it (16 min for all 7,500 papers when an index has none),
+          # so 60 leaves room under the 110-minute step limit. At 90, the Nov 13 run finished embedding
+          # and was then killed 23 seconds before packing the index, so the work was thrown away.
+          python -m src.indexing.cli --max-minutes "${{ inputs.index_minutes || '60' }}" | tee index.log
           # "added N chunks" from the last line; 0 means the index didn't change
           echo "indexed=$(sed -n 's/^added \([0-9,]*\) chunks.*/\1/p' index.log | tr -d , | tail -1)" >> "$GITHUB_OUTPUT"
           # smoke test: the updated index loads and answers a query
