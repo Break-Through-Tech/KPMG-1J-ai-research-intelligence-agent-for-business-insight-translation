@@ -7,6 +7,7 @@
 #
 # LLM calls per action: ask = 2, rewrite for another audience = 1,
 # follow-up question = 1, market scan = 1 (plus SEC EDGAR requests),
+# presentation (slides + speaker notes) = 1,
 # everything else (open, approve, request changes, copy link, copy for
 # email/Slack, projects) = 0.
 #
@@ -44,12 +45,14 @@ from src.translation.prompts import (
 from .checks import run_checks
 from .market import add_market_routes
 from .poc_starter import add_poc_routes
+from .present import add_present_routes
 from .store import (
     AdaptationStore,
     BriefStore,
     CommentStore,
     MarketScanStore,
     PilotPlanStore,
+    PresentationStore,
     ProjectStore,
 )
 
@@ -58,7 +61,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 STATUSES = {"draft", "approved", "changes"}
 
 # Page files that get a version in their link, so browsers never mix old and new
-STATIC_FILES = ("app.css", "app.js", "poc.css", "poc.js", "market.css", "market.js")
+STATIC_FILES = ("app.css", "app.js", "poc.css", "poc.js", "market.css", "market.js",
+                "present.css", "present.js")
 
 PROJECT_STATUSES = {"active", "archived"}
 
@@ -174,7 +178,8 @@ def brief_entry(result, insight):
 
 def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
                adaptations=None, pilot_plans=None, comments=None, compressor=None,
-               compact_prompt=False, market_scans=None, edgar=None):
+               compact_prompt=False, market_scans=None, edgar=None,
+               presentations=None):
     """
     retriever: anything with search(query, top_k) (see src/pipeline/pipeline.py)
     llm:       anything with generate(system_prompt, user_prompt)
@@ -189,6 +194,7 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
     compact_prompt: use the shorter summarization instructions
     market_scans, edgar: a MarketScanStore and an EdgarClient for the Market tab
                (src/app/market.py); edgar is None when SEC_USER_AGENT isn't set
+    presentations: a PresentationStore for the Present tab (src/app/present.py)
     """
 
     app = FastAPI(title="Research Insight Agent")
@@ -203,6 +209,8 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
         comments = CommentStore(Path(store.directory).parent / "ui_comments")
     if market_scans is None:
         market_scans = MarketScanStore(Path(store.directory).parent / "ui_market_scans")
+    if presentations is None:
+        presentations = PresentationStore(Path(store.directory).parent / "ui_presentations")
 
     # Adaptations, pilot plans and comments are read and rewritten as a whole too
     storage_lock = threading.Lock()
@@ -724,6 +732,10 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
     # Market scans: SEC filings + one LLM call (src/app/market.py)
     add_market_routes(app, load, run_llm, llm, market_scans, edgar, projects, now, STATUSES)
 
+    # Present tab: slides and speaker notes from a brief, one LLM call (src/app/present.py)
+    add_present_routes(app, load, run_llm, llm, presentations, adaptations, pilot_plans,
+                       market_scans, now)
+
     @app.get("/")
     def index():
         # Versioned asset links, so a browser never pairs a new page with an old
@@ -807,6 +819,7 @@ def main():
     parser.add_argument("--pilot-plans-dir", default="data/ui_pilot_plans")
     parser.add_argument("--comments-dir", default="data/ui_comments")
     parser.add_argument("--market-scans-dir", default="data/ui_market_scans")
+    parser.add_argument("--presentations-dir", default="data/ui_presentations")
     parser.add_argument("--compress", action="store_true",
                         help="shorten the retrieved passages before the summary call (src/pipeline/compress.py); "
                              "off by default because it made answers slower in testing")
@@ -846,6 +859,7 @@ def main():
         compact_prompt=args.compact_prompt,
         market_scans=MarketScanStore(args.market_scans_dir),
         edgar=edgar_from_env(),
+        presentations=PresentationStore(args.presentations_dir),
     )
 
     import uvicorn

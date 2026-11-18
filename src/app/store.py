@@ -205,3 +205,24 @@ class MarketScanStore(JsonStore):
         for scan in self._all():
             counts[scan.get("brief_id")] = counts.get(scan.get("brief_id"), 0) + 1
         return counts
+
+
+class PresentationStore(JsonStore):
+    """Slide outlines with speaker notes (src/app/present.py), per brief."""
+
+    def __init__(self, directory="data/ui_presentations"):
+        super().__init__(directory)
+
+    def list(self, brief_id=None):
+        """Short rows, newest first, optionally for one brief."""
+        rows = [
+            {
+                key: deck.get(key) for key in (
+                    "id", "brief_id", "query", "audience", "minutes", "brief_status",
+                    "created_at", "updated_at",
+                )
+            } | {"slides": len(deck.get("slides", []))}
+            for deck in self._all()
+            if brief_id is None or deck.get("brief_id") == brief_id
+        ]
+        return _newest_first(rows, field="created_at")

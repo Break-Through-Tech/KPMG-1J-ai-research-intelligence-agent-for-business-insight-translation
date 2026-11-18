@@ -18,7 +18,7 @@ It needs the papers in `data/papers_clean.parquet` and the LanceDB index built f
 
 Instead of exporting, you can put the key in a `.env` file at the repo root (`NVIDIA_API_KEY=...`, git-ignored); the app reads it at startup. For the Market tab, also set `SEC_USER_AGENT` (see [Market scan](#market-scan)).
 
-Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`, `--projects-dir`, `--adaptations-dir`, `--pilot-plans-dir`, `--comments-dir`, `--market-scans-dir`, `--compress` and `--context-budget` (shorten the paper text sent to the summary step; off by default, see `src/pipeline/README.md`), `--compact-prompt` (shorter summary instructions, not recommended yet).
+Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoning-effort` (`none` for models that reject it), `--port`, `--papers`, `--index-dir`, `--briefs-dir`, `--projects-dir`, `--adaptations-dir`, `--pilot-plans-dir`, `--comments-dir`, `--market-scans-dir`, `--presentations-dir`, `--compress` and `--context-budget` (shorten the paper text sent to the summary step; off by default, see `src/pipeline/README.md`), `--compact-prompt` (shorter summary instructions, not recommended yet).
 
 ## What each button costs
 
@@ -29,9 +29,11 @@ Options: `--provider groq|nvidia|gemini` (default `groq`), `--model`, `--reasoni
 | Regenerate brief (after "Request changes") | 1 |
 | Follow-up question | 1 (answers from the saved summary, no new search) |
 | Run a market scan | 1 (plus 15-25 free SEC EDGAR requests) |
+| Generate notes/slides | 1 (from the saved brief and summary) |
 | Open a saved brief, approve, request changes, copy link, copy for email or Slack, export PDF | 0 |
 | Create or edit a project, add or remove a brief, filter the Library | 0 |
 | Open, approve, copy or delete a saved market scan | 0 |
+| Open, edit, copy or delete a saved presentation | 0 |
 
 Every answer is saved as a JSON file in `data/ui_briefs/` (git-ignored), so reopening a brief never calls the LLM again. Projects are saved the same way in `data/ui_projects/` (git-ignored).
 
@@ -49,12 +51,13 @@ The sidebar links to Home, Projects, Research (the most recent brief), Library a
 - **Projects** (`#/projects`): one project per client engagement, with name, client, industry, engagement goal and notes. Archived projects are hidden unless you tick "Show archived projects".
   - **Project page** (`#/project/<id>`): the same question box as Home (briefs asked here are tailored to the client and saved in the project), the project's briefs (Remove takes a brief out of the project but keeps it in the Library), **Add a saved brief**, the market scans run on the project's briefs, and the client details with **Edit details** (`#/project/<id>/edit`, which also archives or restores).
   - A brief can be in several projects. The brief page lists its projects, with × to remove and **Add to project…** to file it in another.
-- **Brief** (`#/brief/<id>`, or `#/brief/<id>/review` to open a tab): status and evidence badges, the question, the Bottom Line as a subtitle, and five tabs:
-  - **Brief:** the brief with the evidence meter, cited sources beside it, and the buttons: Export PDF, Copy for email, Copy for Slack, Copy link, Rewrite for another audience. A warning shows here if a citation check failed or the output was cut off.
+- **Brief** (`#/brief/<id>`, or `#/brief/<id>/review` to open a tab): status and evidence badges, the question, the Bottom Line as a subtitle, and six tabs:
+  - **Brief:** the brief with the evidence meter, cited sources beside it, and the buttons: Generate notes/slides (opens the Present tab), Export PDF, Copy for email, Copy for Slack, Copy link, Rewrite for another audience. A warning shows here if a citation check failed or the output was cut off.
   - **Follow-up questions** (under the brief): answered from the research summary only, with citations. If the summary doesn't cover it, the answer starts "Not covered:" and offers **Search new papers for this**, which fills in Home.
   - **Research summary:** the summary the brief was written from.
   - **Sources:** every retrieved paper, cited or not, with its arXiv link.
   - **Market:** a market scan from SEC filings (see [Market scan](#market-scan)).
+  - **Present:** a slide outline with speaker notes for a chosen audience and talk length (see [Present](#present-notesslides)).
   - **Review:** automatic checks (every cited paper was retrieved; six template sections under 200 words; evidence rating; output not cut off) and the reviewer decision (Approve / Request changes with a note / Regenerate).
 - **Library** (`#/library`): every saved brief, with the projects each one is in. Filter by question text, audience, review status, evidence level, date created (last 7, 30 or 90 days), whether it has a market scan, and project (including "Not in a project"). Filtering happens in the page, with no extra requests.
 - **Review Queue** (`#/review`): briefs not yet approved.
@@ -68,7 +71,7 @@ Copy for email and Copy for Slack turn citations into `[1]`, `[2]` numbers and a
 | `server.py` | FastAPI app (`create_app`) and the `python -m src.app` entry point |
 | `store.py` | Saves and lists briefs, projects, industry adaptations, pilot plans and comments as JSON files |
 | `checks.py` | Citation, template and evidence checks (no LLM) |
-| `static/` | The page: `index.html`, `app.css`, `app.js`, plus `poc.*` and `market.*` for those sections (no build step) |
+| `static/` | The page: `index.html`, `app.css`, `app.js`, plus `poc.*`, `market.*` and `present.*` for those sections (no build step) |
 
 API for projects: `GET/POST /api/projects`, `GET/PUT /api/projects/{id}`, `POST /api/projects/{id}/briefs` (`{"brief_id"}`), `DELETE /api/projects/{id}/briefs/{brief_id}`. `POST /api/ask` takes an optional `project_id`, and every brief response includes `projects`.
 
@@ -140,3 +143,31 @@ Only the phrases and an industry word are sent to SEC, never client or project d
 API: `GET /api/market/options`, `GET /api/briefs/{id}/market-phrases`, `GET/POST /api/briefs/{id}/market-scans` (POST `{"phrases", "industry", "lens": "client"|"firm"|"both", "window_days"}`), `GET /api/market-scans?project_id=`, `GET/DELETE /api/market-scans/{id}`, `POST /api/market-scans/{id}/status`.
 
 Tests: `tests/test_market.py` (fake EDGAR and LLM, no keys or network needed).
+
+## Present (notes/slides)
+
+**Generate notes/slides** on the Brief tab opens the **Present** tab (`#/brief/<id>/present`). It turns the brief into a slide outline the consultant can present from.
+
+1. Pick who you're presenting to: Executive, Risk & Compliance, Technical Lead or Consultant Team. It defaults to the brief's audience. Consultant Team exists only here, so briefs are unchanged.
+2. Pick 5, 10 or 20 minutes (about 4, 7 or 11 slides).
+3. Optionally include a saved industry adaptation, pilot plan or market scan for this brief. This adds an "Industry or pilot plan" slide.
+4. **One LLM call** (`src/translation/present_prompts.py`) writes the slides in a fixed storyline: The answer, Why it matters, Research findings, What to do next, Evidence and limitations, Industry or pilot plan, Sources. Each slide has a title, bullets, conversational speaker notes, minutes, and 1-2 likely audience questions with suggested answers. The deck also lists things to watch out for. If the research doesn't answer a likely question, the suggested answer says so.
+
+The prompt allows only facts, numbers and paper IDs from the brief, the research summary, the sources and the included saved work. It also forbids merging results across studies or turning a benchmark result into a business outcome. After generating, and again after every edit, `check_deck` (no LLM) flags:
+- paper IDs that weren't retrieved or that the summary doesn't cite
+- numbers that appear in none of the inputs
+- slides without notes, bullets or a title, a missing Sources slide, and minutes that don't add up to the talk length
+
+The checks don't catch every wrong claim, so the deck is always labeled a draft. If the brief isn't approved, the tab and **Copy as text** say so.
+
+Slides are edited in place and save automatically, with no LLM call. Decks are saved in `data/ui_presentations/` (git-ignored). Generating again keeps the older decks, which can be reopened from the saved list. Export is **Copy as text** for now; a PowerPoint download would need `python-pptx`.
+
+| File | What it does |
+|---|---|
+| `present.py` | The routes (`add_present_routes`, called once from `server.py`) and `check_deck` |
+| `../translation/present_prompts.py` | Audiences, talk lengths, the prompt and `parse_deck` |
+| `static/present.js`, `static/present.css` | The Present tab |
+
+API: `GET /api/present/options`, `GET/POST /api/briefs/{id}/presentations` (POST `{"audience", "minutes", "adaptation_id"?, "pilot_plan_id"?, "market_scan_id"?}`; GET also lists the saved work that can be included), `GET/PUT/DELETE /api/presentations/{id}` (PUT `{"slides", "watch_outs"}`).
+
+Tests: `tests/test_present.py` (fake LLM, no keys needed).
