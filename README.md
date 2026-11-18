@@ -73,15 +73,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Run `pip install -r requirements.txt` again whenever you pull new changes, since new features can add packages (for example `python-pptx` for Download PowerPoint).
+
 **2. Download the papers and the search index**
 
 ```bash
-mkdir -p data
-curl -L -o data/papers_clean.parquet \
-  https://github.com/Break-Through-Tech/KPMG-1J-ai-research-intelligence-agent-for-business-insight-translation/releases/latest/download/papers_clean.parquet
+./scripts/get_latest_data.sh
 ```
 
-If the same release lists `index.tar.gz`, download it and unpack it with `tar -xzf index.tar.gz -C data`. Otherwise build the index yourself (one time, about 20 minutes); see `src/pipeline/README.md`, Setup. You should end up with `data/papers_clean.parquet` and `data/index/`.
+This downloads the latest published papers and search index (about 1.5 GB) into `data/papers_clean.parquet` and `data/index/`. Run it again any time to get newer papers, then restart the app. To build the index yourself instead (one time, about 20 minutes), see `src/pipeline/README.md`, Setup.
 
 **3. Set your API key**
 

@@ -12,6 +12,8 @@ export NVIDIA_API_KEY=...               # free key from build.nvidia.com
 python -m src.app --provider nvidia     # then open http://localhost:8000
 ```
 
+**After pulling new changes, run `pip install -r requirements.txt` again, then restart the app.** New features can add packages: Download PowerPoint on the Present tab needs `python-pptx`, and without it the app won't start (`ModuleNotFoundError: No module named 'pptx'`). The server also only picks up new Python code when it starts. Without a restart, the page can show new buttons whose routes return 404.
+
 The team uses NVIDIA. On a Mac you can copy the key and run `export NVIDIA_API_KEY="$(pbpaste)"` so it never appears on screen. Groq and Gemini also work: set `GROQ_API_KEY` or `GEMINI_API_KEY` and pass `--provider groq` or `--provider gemini`.
 
 It needs the papers in `data/papers_clean.parquet` and the LanceDB index built from them in `data/index` (see `src/pipeline/README.md`, Setup). Startup takes a few seconds to load the embedding model. Paper title/abstract vectors are read from the index; if it was built before they were stored, they're embedded at startup instead, which takes longer.
