@@ -27,10 +27,17 @@ MAX_WAIT = 300
 USER_AGENT = os.environ.get("ARXIV_USER_AGENT", "research-corpus-updater/1.0 (python-requests)")
 
 _last_request = 0.0
+# whether any request in this process has worked; if none has, a refusal means arXiv is
+# blocking this machine (GitHub runners share IPs), not a brief outage partway through
+_ever_succeeded = False
 
 
 class ArxivUnavailable(RuntimeError):
     """arXiv couldn't be reached after retrying (this is not the same as papers missing)"""
+
+
+def ever_succeeded():
+    return _ever_succeeded
 
 
 def _retry_after(resp):
@@ -42,7 +49,7 @@ def _retry_after(resp):
 
 def get(params, max_retries=6, sleep=time.sleep):
     """the response body for one API query, retrying 429/503 and network errors with back-off"""
-    global _last_request
+    global _last_request, _ever_succeeded
     wait = FIRST_WAIT
     status = None
     for attempt in range(1, max_retries + 1):
@@ -57,6 +64,7 @@ def get(params, max_retries=6, sleep=time.sleep):
         _last_request = time.monotonic()
 
         if status == 200:
+            _ever_succeeded = True
             return resp.content
         if resp is not None and status not in RETRY_CODES:
             resp.raise_for_status()

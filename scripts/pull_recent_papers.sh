@@ -30,7 +30,7 @@ FIRST_RUN_DAYS="${FIRST_RUN_DAYS:-7}" # how far back to go when there is no data
 CHECK_STRICT="${CHECK_STRICT:-false}" # true = fail (exit 1) if the coverage check finds missing papers
 RUN_CHECK="${RUN_CHECK:-true}"        # the GitHub workflow runs the check itself, after publishing
 RUN_PREPROCESS="${RUN_PREPROCESS:-true}" # the GitHub workflow preprocesses in its own step, which also runs after a timeout
-INGEST_ATTEMPTS="${INGEST_ATTEMPTS:-3}" # retry ingestion this many times if it fails (e.g. the arXiv API is down)
+INGEST_ATTEMPTS="${INGEST_ATTEMPTS:-3}" # retry ingestion this many times if it fails partway (e.g. an arXiv outage)
 RETRY_WAIT="${RETRY_WAIT:-300}"       # seconds to wait between attempts
 
 DELETE_PDFS=false
@@ -79,15 +79,24 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then echo "since=$SINCE" >> "$GITHUB_OUTPUT"; fi
 # retrying is safe: finished batches are already saved and already-ingested papers are skipped
 INGEST_LOG="$(mktemp)"
 for attempt in $(seq 1 "$INGEST_ATTEMPTS"); do
-    if "$PYTHON" -m src.ingestion.cli \
+    STATUS=0
+    "$PYTHON" -m src.ingestion.cli \
         --category "$CATEGORY" \
         --max-results "$MAX_RESULTS" \
         --since "$SINCE" \
         --raw-pdf-dir "$RAW_PDF_DIR" \
         --dataset-path "$DATASET" \
         --max-papers "$MAX_PAPERS" \
-        --batch-size "$BATCH_SIZE" | tee "$INGEST_LOG"; then
+        --batch-size "$BATCH_SIZE" | tee "$INGEST_LOG" || STATUS=$?
+    if [ "$STATUS" -eq 0 ]; then
         break
+    fi
+    # 75: arXiv refused every request, so it's blocking this machine; trying again from here
+    # just waits longer (the workflow's catch-up run retries later from a fresh machine)
+    if [ "$STATUS" -eq 75 ]; then
+        echo "arXiv is blocking this machine, not retrying from it (everything saved so far is kept)" >&2
+        rm -f "$INGEST_LOG"
+        exit 1
     fi
     if [ "$attempt" -eq "$INGEST_ATTEMPTS" ]; then
         echo "ingestion failed $INGEST_ATTEMPTS times, giving up (everything saved so far is kept)" >&2

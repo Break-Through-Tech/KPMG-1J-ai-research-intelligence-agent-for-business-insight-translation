@@ -146,6 +146,14 @@ class LanceRetriever:
 
         self.papers = self._load_papers(papers_path)
 
+    def reopen(self, index_dir):
+        """
+        Reads the index from a new folder: the app's data update checks a download where
+        it lands, then moves it into data/index (src/app/data_update.py). Everything else
+        the retriever holds was read when it loaded.
+        """
+        self.table = open_index(index_dir, self.embedder)
+
     def _load_papers(self, papers_path):
         """
         Titles and abstracts for the indexed papers, keyed by base paper ID.

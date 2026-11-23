@@ -54,6 +54,7 @@ def responses(monkeypatch):
     monkeypatch.setattr(arxiv_api.requests, "get", fake_get)
     monkeypatch.setattr(arxiv_api.time, "sleep", lambda s: state["waits"].append(s))
     monkeypatch.setattr(arxiv_api, "_last_request", 0.0)
+    monkeypatch.setattr(arxiv_api, "_ever_succeeded", False)
     return state
 
 
@@ -76,6 +77,35 @@ def test_gives_up_with_arxiv_unavailable(responses):
     responses["queue"] = [FakeResponse(429)] * 3
     with pytest.raises(arxiv_api.ArxivUnavailable):
         arxiv_api.get({}, max_retries=3, sleep=responses["waits"].append)
+
+
+def run_cli(monkeypatch, run_pipeline):
+    from src.ingestion import cli
+    monkeypatch.setattr(cli, "run_pipeline", run_pipeline)
+    monkeypatch.setattr("sys.argv", ["cli", "--since", "2026-11-20"])
+    cli.main()
+
+
+def test_blocked_from_the_first_request_exits_75_so_the_script_stops(responses, monkeypatch):
+    responses["queue"] = [FakeResponse(429)] * 3
+
+    def run_pipeline(**_):
+        arxiv_api.get({}, max_retries=3, sleep=responses["waits"].append)
+
+    with pytest.raises(SystemExit) as stopped:
+        run_cli(monkeypatch, run_pipeline)
+    assert stopped.value.code == 75
+
+
+def test_failing_partway_is_raised_so_the_script_retries(responses, monkeypatch):
+    responses["queue"] = [FakeResponse(200, b"ok")] + [FakeResponse(503)] * 3
+
+    def run_pipeline(**_):
+        arxiv_api.get({}, sleep=responses["waits"].append)
+        arxiv_api.get({}, max_retries=3, sleep=responses["waits"].append)
+
+    with pytest.raises(arxiv_api.ArxivUnavailable):
+        run_cli(monkeypatch, run_pipeline)
 
 
 def test_other_errors_are_not_retried(responses):

@@ -4,8 +4,16 @@
 # ex: python -m src.ingestion.cli --max-results 10 --since 2026-01-01
 
 import argparse
+import sys
 from datetime import date
+
+from . import arxiv_api
 from .pipeline import run_pipeline
+
+# exit code when arXiv refused every request from the start, which means it's blocking this
+# machine; retrying from the same machine doesn't help (scripts/pull_recent_papers.sh stops,
+# and the workflow's catch-up run tries again later, usually from a different machine)
+BLOCKED_EXIT_CODE = 75
 
 def main():
     parser = argparse.ArgumentParser(description = "ingest arXiv papers")
@@ -18,15 +26,22 @@ def main():
     parser.add_argument("--batch-size", type=int, default=None, help="save progress every N papers")
     args = parser.parse_args()
 
-    run_pipeline(
-        category=args.category,
-        max_results=args.max_results,
-        raw_pdf_dir=args.raw_pdf_dir,
-        dataset_path=args.dataset_path,
-        since=args.since,
-        max_papers=args.max_papers,
-        batch_size=args.batch_size,
-    )
+    try:
+        run_pipeline(
+            category=args.category,
+            max_results=args.max_results,
+            raw_pdf_dir=args.raw_pdf_dir,
+            dataset_path=args.dataset_path,
+            since=args.since,
+            max_papers=args.max_papers,
+            batch_size=args.batch_size,
+        )
+    except arxiv_api.ArxivUnavailable as error:
+        if arxiv_api.ever_succeeded():
+            raise  # failed partway, usually brief, so the script retries
+        print(f"arXiv refused every request from this machine ({error}). "
+              "It's likely blocking this machine's IP address.", file=sys.stderr)
+        sys.exit(BLOCKED_EXIT_CODE)
 
 if __name__ == "__main__":
     main()

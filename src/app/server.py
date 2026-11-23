@@ -43,6 +43,7 @@ from src.translation.prompts import (
 )
 
 from .checks import run_checks
+from .data_update import DataUpdater, UpdateError, update_at_startup
 from .common import StatusRequest, load_or_404
 from .market import add_market_routes
 from .poc_starter import add_poc_routes
@@ -174,7 +175,7 @@ def brief_entry(result, insight):
 
 def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
                adaptations=None, pilot_plans=None, comments=None,
-               market_scans=None, edgar=None, presentations=None):
+               market_scans=None, edgar=None, presentations=None, updater=None):
     """
     retriever: anything with search(query, top_k) (see src/pipeline/pipeline.py)
     llm:       anything with generate(system_prompt, user_prompt)
@@ -187,6 +188,8 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
     market_scans, edgar: a MarketScanStore and an EdgarClient for the Market tab
                (src/app/market.py); edgar is None when SEC_USER_AGENT isn't set
     presentations: a PresentationStore for the Present tab (src/app/present.py)
+    updater:   a DataUpdater (src/app/data_update.py) for the "Check for new data"
+               button; without one the button reports that updating isn't available
     """
 
     app = FastAPI(title="Research Insight Agent")
@@ -212,6 +215,12 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
 
     # The retriever and LLM are shared, so run one pipeline call at a time
     pipeline_lock = threading.Lock()
+
+    # The "Check for new data" button replaces the retriever while the app runs,
+    # and the header's paper count (corpus) in place
+    current = {"retriever": retriever}
+    if corpus is None:
+        corpus = {}
 
     def check_audience(audience):
         if audience not in AUDIENCES:
@@ -271,6 +280,37 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
             "examples": examples or [],
         }
 
+    def swap_retriever(activate):
+        # waits for the question being answered (if any), so no search sees the files move
+        with pipeline_lock:
+            current["retriever"] = activate()
+        return current["retriever"]
+
+    def refresh_corpus(_retriever):
+        corpus.clear()
+        corpus.update(corpus_info(updater.papers_path, updater.index_dir))
+
+    @app.get("/api/data/latest")
+    def data_latest():
+        if updater is None:
+            raise HTTPException(501, "Updating the data isn't available in this app.")
+        try:
+            return updater.check()
+        except UpdateError as error:
+            raise HTTPException(502, str(error))
+
+    @app.post("/api/data/update")
+    def data_update():
+        if updater is None:
+            raise HTTPException(501, "Updating the data isn't available in this app.")
+        if not updater.start(swap_retriever, on_done=refresh_corpus):
+            raise HTTPException(409, "An update is already running.")
+        return updater.status
+
+    @app.get("/api/data/update")
+    def data_update_status():
+        return updater.status if updater else {"state": "idle"}
+
     @app.post("/api/ask")
     def ask(request: AskRequest):
         question = request.question.strip()
@@ -292,7 +332,7 @@ def create_app(retriever, llm, store, corpus=None, examples=None, projects=None,
         client = format_client_context(project) or None
 
         result = run_llm(lambda: answer_query(
-            question, retriever, llm, top_k=request.top_k,
+            question, current["retriever"], llm, top_k=request.top_k,
             translate=True, audience=request.audience, filters=filters,
             client=client,
         ))
@@ -818,6 +858,8 @@ def main():
     parser.add_argument("--presentations-dir", default="data/ui_presentations")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--no-update", action="store_true",
+                        help="Start with the data already in data/ instead of checking GitHub for newer data")
     args = parser.parse_args()
 
     # Check the API key before the slow retriever startup
@@ -825,8 +867,19 @@ def main():
 
     print("Loading the retriever and embedding model...")
     from src.rag.lance_retriever import LanceCombinedRetriever
+    from src.vectorizing.embedder import TextEmbedder
 
-    retriever = LanceCombinedRetriever(papers_path=args.papers, index_dir=args.index_dir)
+    # one embedding model for every retriever the app builds, including ones made
+    # when new data is downloaded
+    embedder = TextEmbedder()
+
+    def load_retriever(papers_path, index_dir):
+        return LanceCombinedRetriever(papers_path=papers_path, index_dir=index_dir, embedder=embedder)
+
+    updater = DataUpdater(args.papers, args.index_dir, load=load_retriever)
+    retriever = None if args.no_update else update_at_startup(updater)
+    if retriever is None:
+        retriever = load_retriever(args.papers, args.index_dir)
 
     app = create_app(
         retriever,
@@ -841,6 +894,7 @@ def main():
         market_scans=MarketScanStore(args.market_scans_dir),
         edgar=edgar_from_env(),
         presentations=PresentationStore(args.presentations_dir),
+        updater=updater,
     )
 
     import uvicorn
