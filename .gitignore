@@ -23,6 +23,7 @@ data/vectorized_test/
 data/index/
 data/index.previous/
 data/.download/
+data/data_release.json
 .venv/
 
 # Old local Chroma vector databases (the Chroma retriever has been removed)

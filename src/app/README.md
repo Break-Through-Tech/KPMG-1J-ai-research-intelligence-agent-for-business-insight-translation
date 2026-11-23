@@ -18,7 +18,12 @@ The team uses NVIDIA. On a Mac you can copy the key and run `export NVIDIA_API_K
 
 It needs the papers in `data/papers_clean.parquet` and the LanceDB index built from them in `data/index` (see `src/pipeline/README.md`, Setup). Startup takes a few seconds to load the embedding model. Paper title/abstract vectors are read from the index; if it was built before they were stored, they're embedded at startup instead, which takes longer.
 
-To get the newest papers, run `./scripts/get_latest_data.sh` and restart the app. It downloads the latest published dataset and index (about 1.5 GB) into those two places, and keeps the previous index as `data/index.previous`. The header ("N papers indexed from arXiv, <dates>") counts what the search index holds, read from `data/index/index_manifest.json`, because downloaded papers that aren't embedded yet can't be found. Hover over it to see how many more papers are waiting and when the index was built.
+**Getting the newest papers.** The app does this itself (`src/app/data_update.py`), downloading the latest published dataset and index (about 2 GB) into those two places and keeping the previous index as `data/index.previous`:
+
+- **At startup**, `python -m src.app` asks GitHub for the latest release and downloads it if it's newer than what's in `data/`, which takes a few minutes when there is new data. Offline, or if the download fails, it starts with the data it has. `--no-update` skips the check.
+- **While it runs**, the **Check for new data** link next to the paper count does the same without a restart. The download and its check happen in the background while questions keep being answered from the old data; the switch waits for the question being answered (if any) and takes a moment. If anything fails, the old data stays in use and the link shows why.
+
+Nothing in `data/` is replaced until the download loads as a working retriever, so a broken download can't leave the app without an index. Which release is installed is recorded in `data/data_release.json`; data downloaded another way is matched to a release by when its index was built. `./scripts/get_latest_data.sh` still works, followed by a restart. GitHub allows 60 checks an hour without a token; set `GITHUB_TOKEN` for more. The header ("N papers indexed from arXiv, <dates>") counts what the search index holds, read from `data/index/index_manifest.json`, because downloaded papers that aren't embedded yet can't be found. Hover over it to see how many more papers are waiting and when the index was built.
 
 Instead of exporting, you can put the key in a `.env` file at the repo root (`NVIDIA_API_KEY=...`, git-ignored); the app reads it at startup. For the Market tab, also set `SEC_USER_AGENT` (see [Market scan](#market-scan)).
 

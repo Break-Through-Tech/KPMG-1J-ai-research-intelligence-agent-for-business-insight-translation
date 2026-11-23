@@ -146,6 +146,14 @@ button, input, select, textarea { font: inherit; }
 
 .indexed { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); margin: 0; }
 .indexed .dot { width: 10px; height: 10px; border-radius: 50%; background: #1F9D63; flex: none; }
+.indexed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.data-update { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 14px; color: var(--muted); }
+.data-update-btn {
+  font: inherit; font-weight: 600; padding: 0; min-height: 0; border: 0; background: none;
+  color: var(--link); cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+}
+.data-update-btn:hover { color: var(--kpmg-deep); }
+.data-update-error { color: var(--bad-ink); }
 
 /* ---------- Search bar --------------------------------------------------- */
 
@@ -201,6 +209,10 @@ button, input, select, textarea { font: inherit; }
 .hero-sub { margin: 0 auto; max-width: 780px; font-size: clamp(17px, 1.6vw, 21px); color: #DCE5F7; }
 .hero .indexed { color: var(--on-blue); padding-left: 22px; margin-top: -6px; }
 .hero .indexed .dot { background: var(--mint); }
+.hero .data-update { color: var(--on-blue); margin-top: -6px; }
+.hero .data-update-btn { color: var(--white); }
+.hero .data-update-btn:hover { color: var(--sky); }
+.hero .data-update-error { color: #FFD3CC; }
 
 .hero-controls {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;

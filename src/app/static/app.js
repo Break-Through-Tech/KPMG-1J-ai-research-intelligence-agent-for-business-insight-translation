@@ -165,6 +165,86 @@ function indexedTitle() {
   return parts.join(" ");
 }
 
+// ---- "Check for new data": downloads the newest published papers and search index ----
+// state.dataUpdate: { state: idle | checking | available | current | downloading | installing | done | error, ... }
+
+function dataUpdateHtml() {
+  const u = state.dataUpdate || { state: "idle" };
+  const button = (action, label) => `<button type="button" class="btn--link data-update-btn" data-data-update="${action}">${label}</button>`;
+  switch (u.state) {
+    case "checking": return `<span>Checking for new data…</span>`;
+    case "available": return `<span>New data published ${esc(formatDate(u.published_at))}${u.notes ? ` · ${esc(u.notes)}` : ""}</span> ${button("update", "Update now")}`;
+    case "current": return `<span>Up to date.</span> ${button("check", "Check again")}`;
+    case "downloading": {
+      const percent = u.total ? Math.floor((u.downloaded * 100) / u.total) : 0;
+      return `<span>Downloading new data… ${percent}% of ${(u.total / 1e9).toFixed(1)} GB. You can keep working.</span>`;
+    }
+    case "installing": return `<span>Checking and switching to the new data…</span>`;
+    case "done": return `<span>${esc(u.message || "Updated.")}</span>`;
+    case "error": return `<span class="data-update-error">${esc(u.message || "The update failed.")}</span> ${button("check", "Try again")}`;
+    default: return button("check", "Check for new data");
+  }
+}
+
+function showDataUpdate(next) {
+  state.dataUpdate = next;
+  const el = document.getElementById("data-update");
+  if (el) el.innerHTML = dataUpdateHtml();
+}
+
+async function checkForData() {
+  showDataUpdate({ state: "checking" });
+  try {
+    const result = await api("/api/data/latest");
+    showDataUpdate(result.available
+      ? { state: "available", ...result.latest }
+      : { state: "current" });
+  } catch (error) {
+    showDataUpdate({ state: "error", message: error.message });
+  }
+}
+
+async function startDataUpdate() {
+  try {
+    showDataUpdate(await api("/api/data/update", {}));
+  } catch (error) {
+    // 409: an update started from another tab is already running, so just follow it
+    if (!/already running/.test(error.message)) return showDataUpdate({ state: "error", message: error.message });
+  }
+  pollDataUpdate();
+}
+
+async function pollDataUpdate() {
+  let status;
+  try {
+    status = await api("/api/data/update");
+  } catch (error) {
+    return showDataUpdate({ state: "error", message: error.message });
+  }
+  if (status.state === "done") {
+    if (status.updated) {
+      // the header's paper count and dates come from /api/info
+      try { state.info = await api("/api/info"); } catch { /* keep the old count */ }
+      const indexed = document.querySelector(".indexed");
+      if (indexed) {
+        indexed.title = indexedTitle();
+        indexed.lastChild.textContent = indexedText();
+      }
+    }
+    return showDataUpdate(status.updated ? status : { state: "current" });
+  }
+  if (status.state === "error") return showDataUpdate(status);
+  showDataUpdate(status);
+  setTimeout(pollDataUpdate, 1500);
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-data-update]");
+  if (!button) return;
+  if (button.dataset.dataUpdate === "update") startDataUpdate();
+  else checkForData();
+});
+
 function topicLabel(id) {
   return TOPIC_LABELS[id] || id;
 }
@@ -514,7 +594,10 @@ function askControls(inProject) {
           </button>
         </form>
 
-        <p class="indexed" title="${esc(indexedTitle())}"><span class="dot" aria-hidden="true"></span>${esc(indexedText())}</p>
+        <div class="indexed-row">
+          <p class="indexed" title="${esc(indexedTitle())}"><span class="dot" aria-hidden="true"></span>${esc(indexedText())}</p>
+          <span class="data-update" id="data-update" aria-live="polite">${dataUpdateHtml()}</span>
+        </div>
         ${state.busy ? progressList() : ""}
         ${state.error ? `<p class="error" role="alert">${esc(state.error)}</p>` : ""}
 
@@ -1744,6 +1827,15 @@ async function init() {
   }
   await Promise.all([refreshBriefs(), refreshProjects()]);
   route();
+
+  // an update started before this page loaded (another tab, or a refresh) keeps showing its progress
+  try {
+    const status = await api("/api/data/update");
+    if (["checking", "downloading", "installing"].includes(status.state)) {
+      showDataUpdate(status);
+      pollDataUpdate();
+    }
+  } catch { /* the button still works */ }
 }
 
 window.addEventListener("hashchange", route);

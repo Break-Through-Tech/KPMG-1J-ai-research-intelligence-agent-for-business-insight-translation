@@ -81,7 +81,7 @@ Run `pip install -r requirements.txt` again whenever you pull new changes, since
 ./scripts/get_latest_data.sh
 ```
 
-This downloads the latest published papers and search index (about 1.5 GB) into `data/papers_clean.parquet` and `data/index/`. Run it again any time to get newer papers, then restart the app. To build the index yourself instead (one time, about 20 minutes), see `src/pipeline/README.md`, Setup.
+This downloads the latest published papers and search index (about 2 GB) into `data/papers_clean.parquet` and `data/index/`. You only need it once: after that the app keeps itself up to date (it downloads newer data when it starts, and the **Check for new data** link under the search box updates it while it runs). You can skip this step too and let the first start download everything. To build the index yourself instead (one time, about 20 minutes), see `src/pipeline/README.md`, Setup.
 
 **3. Set your API key**
 
